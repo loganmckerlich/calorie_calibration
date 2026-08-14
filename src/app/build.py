@@ -44,8 +44,10 @@ def build():
     df["error_lb"]   = df["cumulative_actual_lb"] - df["cumulative_predicted_lb"]
     df["error_kcal"] = df["error_lb"] * 3500
 
-    # 28-day rolling mean of error_kcal (≥7 days to show)
-    df["rolling_error_kcal"] = df["error_kcal"].rolling(28, min_periods=7).mean()
+    # Rolling error rate: how many kcal/day is the bias in each 28-day window?
+    # diff(28) = how much cumulative error grew over the past 28 days → divide for per-day rate.
+    # A flat line = consistent bias; slope up/down = bias is changing.
+    df["error_rate_kcal_per_day"] = (df["error_lb"].diff(28) / 28 * 3500).rolling(7, min_periods=3).mean()
 
     # per-weigh-in-window regression points
     weigh_in_dates = df.index[df["weight"].notna()]
@@ -85,7 +87,7 @@ def build():
         "cumulative_predicted_lb": to_list(df["cumulative_predicted_lb"]),
         "cumulative_actual_lb":    to_list(df["cumulative_actual_lb"]),
         "error_kcal":              to_list(df["error_kcal"], 0),
-        "rolling_error_kcal":      to_list(df["rolling_error_kcal"], 0),
+        "error_rate_kcal_per_day": to_list(df["error_rate_kcal_per_day"], 0),
         "weigh_in_windows": windows,
         "regression_line": {"x": x_line, "y": y_line},
         "regression": {

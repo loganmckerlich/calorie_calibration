@@ -156,11 +156,11 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">28-Day Rolling Error</div>
+    <div class="panel-title">Error Rate Over Time (Consistency Check)</div>
     <div class="panel-desc">
-      Cumulative error in kilocalories, smoothed over 28 days.
-      A consistently positive value means actual weight is higher than predicted
-      (under-logging intake or over-estimating burn). Negative = the opposite.
+      How many kcal/day is the systematic error in each rolling 28-day window?
+      A <strong>flat line</strong> means the bias is stable and predictable (systematic).
+      A <strong>trending or erratic line</strong> means the error is changing — logging behavior or activity estimation shifted.
     </div>
     <div id="chart-error" class="chart"></div>
   </div>
@@ -204,7 +204,7 @@ function colorForError(val) {
 async function main() {
   const data = await fetch("data.json").then(r => r.json());
   const { dates, cumulative_predicted_lb, cumulative_actual_lb,
-          rolling_error_kcal, weigh_in_windows, regression,
+          error_rate_kcal_per_day, weigh_in_windows, regression,
           regression_line, summary } = data;
 
   // ── Summary cards ─────────────────────────────────────────────────────
@@ -272,19 +272,20 @@ async function main() {
     xaxis: { ...LAYOUT_BASE.xaxis, type: "date" },
   }, PLOTLY_CONFIG);
 
-  // ── Chart 2: Rolling error ─────────────────────────────────────────────
-  // Color bars by sign
-  const barColors = rolling_error_kcal.map(v => v === null ? "#e2e8f0" : v > 0 ? "#fca5a5" : "#86efac");
+  // ── Chart 2: Error rate (consistency check) ───────────────────────────
+  // diff(28)/28*3500: kcal/day gap accumulated in each 28-day window.
+  // Flat = consistent bias. Trend/erratic = bias is shifting.
+  const rateColors = error_rate_kcal_per_day.map(v => v === null ? "#e2e8f0" : v > 0 ? "#fca5a5" : "#86efac");
 
   Plotly.newPlot("chart-error", [
     {
-      x: dates, y: rolling_error_kcal,
-      name: "28-day rolling error", type: "bar",
-      marker: { color: barColors },
+      x: dates, y: error_rate_kcal_per_day,
+      name: "Error rate (kcal/day)", type: "bar",
+      marker: { color: rateColors },
     },
   ], {
     ...LAYOUT_BASE,
-    yaxis: { ...LAYOUT_BASE.yaxis, title: "Error (kcal)", zerolinewidth: 1.5 },
+    yaxis: { ...LAYOUT_BASE.yaxis, title: "Error rate (kcal/day)", zerolinewidth: 1.5 },
     xaxis: { ...LAYOUT_BASE.xaxis, type: "date" },
     shapes: [{ type: "line", x0: dates[0], x1: dates[dates.length-1], y0: 0, y1: 0,
                line: { color: "#94a3b8", width: 1 } }],
