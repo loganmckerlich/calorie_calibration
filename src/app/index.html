@@ -181,12 +181,12 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">Predicted vs. Actual Change per Weigh-In Window</div>
+    <div class="panel-title">Predicted vs. Actual Change by Weigh-In Period</div>
     <div class="panel-desc">
-      Each point = one period between consecutive scale readings.
-      Dashed = perfect accuracy (slope 1). Solid = observed regression.
+      Each period between two scale readings: what the calorie math said should happen vs. what the scale recorded.
+      Divergence in the same direction every period = systematic bias.
     </div>
-    <div id="chart-scatter"></div>
+    <div id="chart-windows"></div>
     <div id="insight" class="insight"></div>
   </div>
 
@@ -304,25 +304,33 @@ function renderHealth(d) {
 
 // ── Page 2: Calibration ──────────────────────────────────────────────────
 function renderCalibration(d) {
-  const { regression, summary, weigh_in_windows, regression_line,
+  const { calibration, summary, weigh_in_windows,
           error_rate_kcal_per_day, dates } = d;
-  const slope = regression.slope;
 
-  const slopeDesc = slope < 0.9 ? "over-estimates deficit"
-                  : slope > 1.1 ? "under-estimates deficit"
-                  : "well-calibrated";
-  const errVal   = summary.final_error_lb;
-  const errClass = errVal > 0.5 ? "positive" : errVal < -0.5 ? "negative" : "neutral";
+  const errVal    = summary.final_error_lb;
+  const errClass  = errVal > 0.5 ? "positive" : errVal < -0.5 ? "negative" : "neutral";
+  const dErr      = calibration.daily_kcal_error;
+  const dErrClass = dErr > 0 ? "positive" : "negative";
 
   document.getElementById("cal-cards").innerHTML = `
     <div class="card">
-      <div class="card-label">Calibration Slope</div>
-      <div class="card-value neutral">${slope.toFixed(2)}×</div>
-      <div class="card-sub">${slopeDesc}</div>
+      <div class="card-label">Daily Calorie Error</div>
+      <div class="card-value ${dErrClass}">${dErr > 0 ? "+" : ""}${dErr.toLocaleString()}</div>
+      <div class="card-sub">kcal/day over- or under-estimated</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg % Error / Day</div>
+      <div class="card-value ${dErrClass}">${dErr > 0 ? "+" : ""}${calibration.avg_pct_error}%</div>
+      <div class="card-sub">vs. avg logged daily deficit</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Median Window Error</div>
+      <div class="card-value neutral">${calibration.median_window_pct_error > 0 ? "+" : ""}${calibration.median_window_pct_error}%</div>
+      <div class="card-sub">predicted vs. actual per weigh-in period</div>
     </div>
     <div class="card">
       <div class="card-label">Total Drift</div>
-      <div class="card-value ${errClass}">${sign(errVal)}${errVal} lb</div>
+      <div class="card-value ${errClass}">${errVal > 0 ? "+" : ""}${errVal} lb</div>
       <div class="card-sub">actual − predicted (cumulative)</div>
     </div>
     <div class="card">
@@ -334,16 +342,6 @@ function renderCalibration(d) {
       <div class="card-label">Actual Change</div>
       <div class="card-value neutral">${sign(summary.total_actual_change_lb)}${summary.total_actual_change_lb} lb</div>
       <div class="card-sub">from scale</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Log Coverage</div>
-      <div class="card-value neutral">${summary.coverage_pct}%</div>
-      <div class="card-sub">${summary.logged_days} / ${summary.total_days} days</div>
-    </div>
-    <div class="card">
-      <div class="card-label">R²</div>
-      <div class="card-value neutral">${regression.r2.toFixed(2)}</div>
-      <div class="card-sub">predicted explains actual</div>
     </div>
   `;
 
@@ -360,42 +358,46 @@ function renderCalibration(d) {
                line: { color: "#94a3b8", width: 1 } }],
   }, PLOTLY_CONFIG);
 
-  // Regression scatter
-  const wx = weigh_in_windows.map(w => w.predicted_change_lb);
-  const wy = weigh_in_windows.map(w => w.actual_change_lb);
-  const wlabels = weigh_in_windows.map(w =>
-    `${w.start} → ${w.end}<br>Predicted: ${sign(w.predicted_change_lb)}${w.predicted_change_lb} lb<br>Actual: ${sign(w.actual_change_lb)}${w.actual_change_lb} lb<br>${w.days} days`);
-  const allVals = [...wx, ...wy];
-  const pad = 0.5;
-  const axMin = Math.min(...allVals) - pad, axMax = Math.max(...allVals) + pad;
+  // Per-period grouped bar chart: predicted vs actual per weigh-in window
+  const wLabels  = weigh_in_windows.map(w => `${w.start}<br>→${w.end}`);
+  const wPred    = weigh_in_windows.map(w => w.predicted_change_lb);
+  const wActual  = weigh_in_windows.map(w => w.actual_change_lb);
+  const wTooltip = weigh_in_windows.map(w =>
+    `${w.start} → ${w.end} (${w.days}d)<br>` +
+    `Predicted: ${sign(w.predicted_change_lb)}${w.predicted_change_lb} lb<br>` +
+    `Actual: ${sign(w.actual_change_lb)}${w.actual_change_lb} lb<br>` +
+    `Error: ${w.pct_error !== null ? (w.pct_error > 0 ? "+" : "") + w.pct_error + "%" : "n/a"}`);
 
-  Plotly.newPlot("chart-scatter", [
-    { x: [axMin, axMax], y: [axMin, axMax], name: "Perfect (slope=1)", type: "scatter", mode: "lines",
-      line: { color: "#cbd5e1", width: 1.5, dash: "dash" } },
-    { x: regression_line.x, y: regression_line.y, name: `Regression (${slope.toFixed(2)}×)`,
-      type: "scatter", mode: "lines", line: { color: "#2563eb", width: 2 } },
-    { x: wx, y: wy, name: "Window", type: "scatter", mode: "markers",
-      text: wlabels, hovertemplate: "%{text}<extra></extra>",
-      marker: { color: "#1e293b", size: 8, opacity: 0.8 } },
+  Plotly.newPlot("chart-windows", [
+    { x: wLabels, y: wPred,   name: "Predicted", type: "bar",
+      marker: { color: "#93c5fd" },
+      text: wTooltip, hovertemplate: "%{text}<extra></extra>" },
+    { x: wLabels, y: wActual, name: "Actual",    type: "bar",
+      marker: { color: "#475569" },
+      text: wTooltip, hovertemplate: "%{text}<extra></extra>" },
   ], {
     ...LAYOUT,
-    legend: { orientation: "h", x: 0, y: 1.18 },
-    xaxis: { ...LAYOUT.xaxis, title: "Predicted change (lb)", range: [axMin, axMax], type: "linear" },
-    yaxis: { ...LAYOUT.yaxis, title: "Actual change (lb)",    range: [axMin, axMax] },
+    barmode: "group",
+    legend: LEG,
+    xaxis: { ...LAYOUT.xaxis, type: "category", tickangle: -35 },
+    yaxis: { ...LAYOUT.yaxis, title: "Weight change (lb)", zerolinewidth: 1.5 },
   }, PLOTLY_CONFIG);
 
-  // Interpretation
-  const slopePct  = Math.abs((1 - slope) * 100).toFixed(0);
-  const direction = slope < 1 ? "under-logs deficit" : "over-logs deficit";
-  const kcalOff   = Math.abs(regression.intercept * 3500).toFixed(0);
+  // Insight
+  const dErrAbs   = Math.abs(dErr);
+  const direction = dErr > 0 ? "over-estimating your deficit" : "under-estimating your deficit";
+  const fix       = dErr > 0
+    ? `log ~${dErrAbs.toLocaleString()} more kcal of food per day, or reduce your assumed burn by ~${dErrAbs.toLocaleString()} kcal`
+    : `log ~${dErrAbs.toLocaleString()} fewer kcal of food per day, or increase your assumed burn by ~${dErrAbs.toLocaleString()} kcal`;
   document.getElementById("insight").innerHTML =
-    `<strong>Interpretation:</strong> Slope = <strong>${slope.toFixed(3)}</strong> — your logged calorie balance
-    systematically ${direction} by ~${slopePct}%. ` +
-    (Math.abs(regression.intercept) > 0.3
-      ? `A constant offset of ~${kcalOff} kcal (intercept = ${regression.intercept.toFixed(2)} lb) suggests a fixed daily logging gap independent of activity. `
-      : "") +
-    `R² = ${regression.r2.toFixed(2)} (${(regression.r2 * 100).toFixed(0)}% of actual variance explained by predictions). ` +
-    `<strong>Calibration factor: multiply your logged deficit by ${(1/slope).toFixed(2)} to match observed weight change.</strong>`;
+    `<strong>Bottom line:</strong> On average you are ${direction} by
+    <strong>${dErr > 0 ? "+" : ""}${dErr.toLocaleString()} kcal/day</strong>
+    (${dErr > 0 ? "+" : ""}${calibration.avg_pct_error}% of your logged daily deficit).
+    To correct: ${fix}.
+    <br><br>
+    The median per-window error is ${calibration.median_window_pct_error > 0 ? "+" : ""}${calibration.median_window_pct_error}%.
+    Check the error rate chart — if bars consistently stay on one side,
+    the bias is systematic and correctable. Scattered bars = short-window noise dominates.`;
 }
 
 main().catch(err => {

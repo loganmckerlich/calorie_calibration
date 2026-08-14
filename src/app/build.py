@@ -49,35 +49,37 @@ def build():
     # A flat line = consistent bias; slope up/down = bias is changing.
     df["error_rate_kcal_per_day"] = (df["error_lb"].diff(28) / 28 * 3500).rolling(7, min_periods=3).mean()
 
-    # per-weigh-in-window regression points
+    # per-weigh-in-window stats
     weigh_in_dates = df.index[df["weight"].notna()]
     windows = []
     for i in range(1, len(weigh_in_dates)):
         s, e = weigh_in_dates[i - 1], weigh_in_dates[i]
         predicted_change = df.loc[s:e, "predicted_delta_lb"].sum()
         actual_change    = float(df.loc[e, "weight"]) - float(df.loc[s, "weight"])
+        days             = int((e - s).days)
+        pct_error        = round((predicted_change - actual_change) / abs(actual_change) * 100, 1) if actual_change != 0 else None
         windows.append({
             "start": s.strftime("%Y-%m-%d"),
             "end":   e.strftime("%Y-%m-%d"),
             "predicted_change_lb": round(predicted_change, 2),
             "actual_change_lb":    round(actual_change, 2),
-            "days": int((e - s).days),
+            "days": days,
+            "pct_error": pct_error,
         })
 
-    # linear regression over windows
-    if len(windows) >= 3:
-        x = np.array([w["predicted_change_lb"] for w in windows])
-        y = np.array([w["actual_change_lb"]    for w in windows])
-        slope, intercept = np.polyfit(x, y, 1)
-        ss_res = float(np.sum((y - (slope * x + intercept)) ** 2))
-        ss_tot = float(np.sum((y - y.mean()) ** 2))
-        r2 = round(1 - ss_res / ss_tot, 3) if ss_tot > 0 else 0.0
-        # regression line for the scatter plot
-        x_line = [float(x.min()), float(x.max())]
-        y_line = [round(slope * v + intercept, 2) for v in x_line]
-    else:
-        slope, intercept, r2 = 1.0, 0.0, 0.0
-        x_line, y_line = [], []
+    # ── Key calibration metrics ────────────────────────────────────────────
+    # Use first→last weigh-in window for most grounded estimate
+    first_wi, last_wi = weigh_in_dates[0], weigh_in_dates[-1]
+    span_days = (last_wi - first_wi).days
+    total_error_kcal = float(df.loc[last_wi, "error_kcal"])
+    daily_kcal_error = round(total_error_kcal / span_days) if span_days > 0 else 0
+
+    avg_daily_net = float(df.loc[first_wi:last_wi, "net_calories"].mean())
+    avg_pct_error = round(daily_kcal_error / abs(avg_daily_net) * 100, 1) if avg_daily_net != 0 else 0.0
+
+    # window pct errors (finite windows only)
+    valid_pcts = [w["pct_error"] for w in windows if w["pct_error"] is not None]
+    median_window_pct_error = round(float(np.median(valid_pcts)), 1) if valid_pcts else 0.0
 
     logged_days = int(df["consumedKilocalories"].notna().sum())
     total_days  = len(df)
@@ -104,17 +106,17 @@ def build():
         "error_kcal":              to_list(df["error_kcal"], 0),
         "error_rate_kcal_per_day": to_list(df["error_rate_kcal_per_day"], 0),
         "weigh_in_windows": windows,
-        "regression_line": {"x": x_line, "y": y_line},
-        "regression": {
-            "slope":     round(float(slope), 3),
-            "intercept": round(float(intercept), 3),
-            "r2":        round(float(r2), 3),
+        "calibration": {
+            "daily_kcal_error":        daily_kcal_error,
+            "avg_pct_error":           avg_pct_error,
+            "median_window_pct_error": median_window_pct_error,
+            "span_days":               span_days,
         },
         "summary": {
-            "start_weight_lb":          round(start_weight, 1),
-            "total_days":               total_days,
-            "logged_days":              logged_days,
-            "coverage_pct":             round(100 * logged_days / total_days, 1),
+            "start_weight_lb":           round(start_weight, 1),
+            "total_days":                total_days,
+            "logged_days":               logged_days,
+            "coverage_pct":              round(100 * logged_days / total_days, 1),
             "total_predicted_change_lb": round(float(df["cumulative_predicted_lb"].iloc[-1]), 1),
             "total_actual_change_lb":    round(float(df["cumulative_actual_lb"].iloc[-1]), 1),
             "final_error_lb":            round(float(df["error_lb"].iloc[-1]), 1),
@@ -125,12 +127,12 @@ def build():
         json.dump(out, f)
 
     s = out["summary"]
-    r = out["regression"]
+    c = out["calibration"]
     print(f"✓  Wrote src/app/data.json")
     print(f"   Period:     {out['dates'][0]} → {out['dates'][-1]}  ({total_days} days, {logged_days} logged)")
     print(f"   Predicted:  {s['total_predicted_change_lb']:+.1f} lb")
     print(f"   Actual:     {s['total_actual_change_lb']:+.1f} lb")
-    print(f"   Regression: slope={r['slope']:.3f}  intercept={r['intercept']:.3f}  R²={r['r2']:.3f}")
+    print(f"   Daily kcal error: {c['daily_kcal_error']:+d} kcal/day  ({c['avg_pct_error']:+.1f}%)")
 
 
 if __name__ == "__main__":
