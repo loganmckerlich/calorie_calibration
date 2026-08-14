@@ -82,10 +82,25 @@ def build():
     logged_days = int(df["consumedKilocalories"].notna().sum())
     total_days  = len(df)
 
+    # 7-day rolling averages for health charts (smooths noise)
+    df["hr_resting_smooth"]  = df["restingHeartRate"].rolling(7, min_periods=3).mean()
+    df["hr_max_smooth"]      = df["maxHeartRate"].rolling(7, min_periods=3).mean()
+    df["calories_burned_smooth"]   = df["totalKilocalories"].rolling(7, min_periods=3).mean()
+    df["calories_consumed_smooth"] = df["consumedKilocaloriesImputed"].rolling(7, min_periods=3).mean()
+
     out = {
         "dates": [d.strftime("%Y-%m-%d") for d in df.index],
-        "cumulative_predicted_lb": to_list(df["cumulative_predicted_lb"]),
-        "cumulative_actual_lb":    to_list(df["cumulative_actual_lb"]),
+        # health page
+        "hr_resting":         to_list(df["restingHeartRate"], 0),
+        "hr_max":             to_list(df["maxHeartRate"], 0),
+        "hr_resting_smooth":  to_list(df["hr_resting_smooth"], 1),
+        "hr_max_smooth":      to_list(df["hr_max_smooth"], 1),
+        "calories_burned":    to_list(df["totalKilocalories"], 0),
+        "calories_consumed":  to_list(df["consumedKilocaloriesImputed"], 0),
+        "calories_burned_smooth":   to_list(df["calories_burned_smooth"], 0),
+        "calories_consumed_smooth": to_list(df["calories_consumed_smooth"], 0),
+        "weight":             to_list(df["weight"], 1),
+        # calibration page
         "error_kcal":              to_list(df["error_kcal"], 0),
         "error_rate_kcal_per_day": to_list(df["error_rate_kcal_per_day"], 0),
         "weigh_in_windows": windows,

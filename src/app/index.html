@@ -3,21 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calorie Calibration</title>
+  <title>Health & Calibration</title>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #f8f9fa;
-      --surface:  #ffffff;
-      --border:   #e9ecef;
-      --text:     #212529;
-      --muted:    #6c757d;
-      --accent:   #2563eb;
-      --red:      #dc2626;
-      --green:    #16a34a;
-      --orange:   #d97706;
+      --bg:      #f8f9fa;
+      --surface: #ffffff;
+      --border:  #e9ecef;
+      --text:    #212529;
+      --muted:   #6c757d;
+      --accent:  #2563eb;
     }
 
     body {
@@ -27,14 +24,41 @@
       min-height: 100vh;
     }
 
-    header {
+    /* ── Nav ── */
+    nav {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 1.5rem 2rem;
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0;
     }
 
-    header h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.01em; }
-    header p  { color: var(--muted); font-size: 0.875rem; margin-top: 0.25rem; }
+    .nav-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 1rem 0;
+      margin-right: 2rem;
+      white-space: nowrap;
+    }
+
+    .nav-tab {
+      padding: 1rem 1.25rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      user-select: none;
+    }
+
+    .nav-tab:hover  { color: var(--text); }
+    .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Pages ── */
+    .page { display: none; }
+    .page.active { display: block; }
 
     main {
       max-width: 960px;
@@ -45,10 +69,10 @@
       gap: 2rem;
     }
 
-    /* ── Summary cards ─────────────────────────────────────────────────── */
+    /* ── Cards ── */
     .cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 1rem;
     }
 
@@ -59,32 +83,15 @@
       padding: 1rem 1.25rem;
     }
 
-    .card-label {
-      font-size: 0.75rem;
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--muted);
-    }
+    .card-label { font-size: 0.72rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .card-value { font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-top: 0.2rem; }
+    .card-sub   { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
 
-    .card-value {
-      font-size: 1.75rem;
-      font-weight: 700;
-      line-height: 1.2;
-      margin-top: 0.25rem;
-    }
+    .positive { color: #dc2626; }
+    .negative { color: #16a34a; }
+    .neutral  { color: var(--text); }
 
-    .card-sub {
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-top: 0.2rem;
-    }
-
-    .positive { color: var(--red);   }   /* gained more than predicted = under-logging */
-    .negative { color: var(--green); }   /* lost more than predicted = over-logging */
-    .neutral  { color: var(--text);  }
-
-    /* ── Chart panels ──────────────────────────────────────────────────── */
+    /* ── Panels ── */
     .panel {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -92,22 +99,9 @@
       padding: 1.5rem;
     }
 
-    .panel-title {
-      font-size: 0.95rem;
-      font-weight: 600;
-      margin-bottom: 0.25rem;
-    }
+    .panel-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .panel-desc  { font-size: 0.8rem; color: var(--muted); margin-bottom: 1rem; line-height: 1.5; }
 
-    .panel-desc {
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-bottom: 1rem;
-      line-height: 1.5;
-    }
-
-    .chart { width: 100%; }
-
-    /* ── Interpretation box ────────────────────────────────────────────── */
     .insight {
       background: #eff6ff;
       border-left: 3px solid var(--accent);
@@ -119,104 +113,208 @@
       color: #1e40af;
     }
 
-    /* ── Footer ────────────────────────────────────────────────────────── */
-    footer {
-      text-align: center;
-      padding: 1.5rem;
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
+    footer { text-align: center; padding: 1.5rem; font-size: 0.75rem; color: var(--muted); }
 
     @media (max-width: 600px) {
-      header, main { padding-left: 1rem; padding-right: 1rem; }
-      .card-value { font-size: 1.4rem; }
+      nav, main { padding-left: 1rem; padding-right: 1rem; }
+      .card-value { font-size: 1.3rem; }
     }
   </style>
 </head>
 <body>
 
-<header>
-  <h1>Calorie Calibration</h1>
-  <p>How well does my calorie tracking predict my actual weight change?</p>
-</header>
+<nav>
+  <div class="nav-title">Logan's Tracking</div>
+  <div class="nav-tab active" data-page="health">Health</div>
+  <div class="nav-tab"        data-page="calibration">Calibration</div>
+</nav>
 
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 1: HEALTH                                                        -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="page active" id="page-health">
 <main>
 
-  <div class="cards" id="cards">
+  <div class="cards" id="health-cards">
     <div class="card"><div class="card-label">Loading…</div></div>
   </div>
 
   <div class="panel">
-    <div class="panel-title">Cumulative Weight Change</div>
-    <div class="panel-desc">
-      What the calorie math predicted vs. what the scale recorded, both anchored to zero on the first day.
-      A gap between the lines is the raw calibration error.
-    </div>
-    <div id="chart-cumulative" class="chart"></div>
+    <div class="panel-title">Calories Burned vs. Consumed</div>
+    <div class="panel-desc">Daily totals with 7-day rolling average. Gap above zero = deficit.</div>
+    <div id="chart-calories"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Heart Rate</div>
+    <div class="panel-desc">Daily max and resting heart rate with 7-day rolling average.</div>
+    <div id="chart-hr"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Weight</div>
+    <div class="panel-desc">Scale readings only — no interpolation.</div>
+    <div id="chart-weight"></div>
+  </div>
+
+</main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- PAGE 2: CALIBRATION                                                   -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-calibration">
+<main>
+
+  <div class="cards" id="cal-cards">
+    <div class="card"><div class="card-label">Loading…</div></div>
   </div>
 
   <div class="panel">
     <div class="panel-title">Error Rate Over Time (Consistency Check)</div>
     <div class="panel-desc">
       How many kcal/day is the systematic error in each rolling 28-day window?
-      A <strong>flat line</strong> means the bias is stable and predictable (systematic).
-      A <strong>trending or erratic line</strong> means the error is changing — logging behavior or activity estimation shifted.
+      A <strong>flat line</strong> = stable, predictable bias.
+      A <strong>trend or erratic line</strong> = logging behavior or activity estimation shifted.
     </div>
-    <div id="chart-error" class="chart"></div>
+    <div id="chart-error"></div>
   </div>
 
   <div class="panel">
-    <div class="panel-title">Predicted vs. Actual Change (Per Weigh-In Window)</div>
+    <div class="panel-title">Predicted vs. Actual Change per Weigh-In Window</div>
     <div class="panel-desc">
-      Each point is one period between two scale readings. The dashed line is where perfect accuracy
-      would sit (slope = 1). The solid regression line shows the systematic bias.
+      Each point = one period between consecutive scale readings.
+      Dashed = perfect accuracy (slope 1). Solid = observed regression.
     </div>
-    <div id="chart-scatter" class="chart"></div>
+    <div id="chart-scatter"></div>
     <div id="insight" class="insight"></div>
   </div>
 
 </main>
+</div>
 
 <footer>Built on Garmin data · <span id="period"></span></footer>
 
 <script>
 const PLOTLY_CONFIG = { displayModeBar: false, responsive: true };
-
-const LAYOUT_BASE = {
+const LAYOUT = {
   margin:    { t: 10, r: 20, b: 50, l: 60 },
   font:      { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", size: 12 },
   plot_bgcolor:  "#ffffff",
   paper_bgcolor: "#ffffff",
-  xaxis: { showgrid: true, gridcolor: "#f0f0f0", zeroline: false },
+  xaxis: { showgrid: true, gridcolor: "#f0f0f0", zeroline: false, type: "date" },
   yaxis: { showgrid: true, gridcolor: "#f0f0f0", zeroline: true, zerolinecolor: "#dee2e6" },
 };
+const LEG = { orientation: "h", x: 0, y: 1.18 };
 
-function sign(v) {
-  return v > 0 ? "+" : "";
-}
+function sign(v) { return v > 0 ? "+" : ""; }
 
-function colorForError(val) {
-  if (val >  0.5) return "#dc2626";
-  if (val < -0.5) return "#16a34a";
-  return "#212529";
-}
+// ── Nav ──────────────────────────────────────────────────────────────────
+document.querySelectorAll(".nav-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("page-" + tab.dataset.page).classList.add("active");
+    window.dispatchEvent(new Event("resize")); // trigger Plotly resize
+  });
+});
 
+// ── Main ─────────────────────────────────────────────────────────────────
 async function main() {
-  const data = await fetch("data.json").then(r => r.json());
-  const { dates, cumulative_predicted_lb, cumulative_actual_lb,
-          error_rate_kcal_per_day, weigh_in_windows, regression,
-          regression_line, summary } = data;
+  const d = await fetch("data.json").then(r => r.json());
 
-  // ── Summary cards ─────────────────────────────────────────────────────
-  const slope     = regression.slope;
-  const slopeDesc = slope < 0.9 ? "tracking over-estimates deficit"
-                  : slope > 1.1 ? "tracking under-estimates deficit"
-                  : "tracking is well-calibrated";
+  document.getElementById("period").textContent =
+    `${d.dates[0]} → ${d.dates[d.dates.length - 1]}`;
 
-  const errorVal  = summary.final_error_lb;
-  const errorClass = errorVal > 0.5 ? "positive" : errorVal < -0.5 ? "negative" : "neutral";
+  renderHealth(d);
+  renderCalibration(d);
+}
 
-  document.getElementById("cards").innerHTML = `
+// ── Page 1: Health ───────────────────────────────────────────────────────
+function renderHealth(d) {
+  const avgResting  = d.hr_resting.filter(Boolean);
+  const avgRestHR   = Math.round(avgResting.reduce((a,b) => a+b, 0) / avgResting.length);
+  const weights     = d.weight.filter(Boolean);
+  const firstW      = weights[0], lastW = weights[weights.length - 1];
+  const wDelta      = +(lastW - firstW).toFixed(1);
+  const avgBurned   = Math.round(d.calories_burned.reduce((a,b) => a+(b||0), 0) / d.calories_burned.length);
+  const avgConsumed = Math.round(d.calories_consumed.filter(Boolean).reduce((a,b) => a+b, 0) / d.calories_consumed.filter(Boolean).length);
+
+  document.getElementById("health-cards").innerHTML = `
+    <div class="card">
+      <div class="card-label">Avg Daily Burn</div>
+      <div class="card-value neutral">${avgBurned.toLocaleString()}</div>
+      <div class="card-sub">kcal/day</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg Daily Intake</div>
+      <div class="card-value neutral">${avgConsumed.toLocaleString()}</div>
+      <div class="card-sub">kcal/day (imputed)</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg Daily Deficit</div>
+      <div class="card-value neutral">${(avgBurned - avgConsumed).toLocaleString()}</div>
+      <div class="card-sub">kcal/day</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg Resting HR</div>
+      <div class="card-value neutral">${avgRestHR}</div>
+      <div class="card-sub">bpm</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Weight Change</div>
+      <div class="card-value ${wDelta > 0 ? "positive" : "negative"}">${sign(wDelta)}${wDelta} lb</div>
+      <div class="card-sub">${firstW} → ${lastW} lb</div>
+    </div>
+  `;
+
+  // Calories chart
+  Plotly.newPlot("chart-calories", [
+    { x: d.dates, y: d.calories_burned,          name: "Burned (daily)",   type: "scatter", mode: "markers",
+      marker: { color: "#bfdbfe", size: 4 }, showlegend: true },
+    { x: d.dates, y: d.calories_consumed,         name: "Consumed (daily)", type: "scatter", mode: "markers",
+      marker: { color: "#fed7aa", size: 4 }, showlegend: true },
+    { x: d.dates, y: d.calories_burned_smooth,    name: "Burned (7d avg)",  type: "scatter", mode: "lines",
+      line: { color: "#2563eb", width: 2 } },
+    { x: d.dates, y: d.calories_consumed_smooth,  name: "Consumed (7d avg)",type: "scatter", mode: "lines",
+      line: { color: "#ea580c", width: 2 } },
+  ], { ...LAYOUT, legend: LEG, yaxis: { ...LAYOUT.yaxis, title: "kcal" } }, PLOTLY_CONFIG);
+
+  // Heart rate chart
+  Plotly.newPlot("chart-hr", [
+    { x: d.dates, y: d.hr_max,            name: "Max HR (daily)",    type: "scatter", mode: "markers",
+      marker: { color: "#fecaca", size: 4 }, showlegend: true },
+    { x: d.dates, y: d.hr_resting,        name: "Resting HR (daily)",type: "scatter", mode: "markers",
+      marker: { color: "#bbf7d0", size: 4 }, showlegend: true },
+    { x: d.dates, y: d.hr_max_smooth,     name: "Max HR (7d avg)",   type: "scatter", mode: "lines",
+      line: { color: "#dc2626", width: 2 } },
+    { x: d.dates, y: d.hr_resting_smooth, name: "Resting HR (7d avg)",type:"scatter", mode: "lines",
+      line: { color: "#16a34a", width: 2 } },
+  ], { ...LAYOUT, legend: LEG, yaxis: { ...LAYOUT.yaxis, title: "bpm" } }, PLOTLY_CONFIG);
+
+  // Weight chart (raw readings only, connected)
+  const wDates = d.dates.filter((_, i) => d.weight[i] !== null);
+  const wVals  = d.weight.filter(v => v !== null);
+  Plotly.newPlot("chart-weight", [
+    { x: wDates, y: wVals, name: "Weight", type: "scatter", mode: "lines+markers",
+      line: { color: "#7c3aed", width: 2 }, marker: { size: 6 } },
+  ], { ...LAYOUT, yaxis: { ...LAYOUT.yaxis, title: "lb" } }, PLOTLY_CONFIG);
+}
+
+// ── Page 2: Calibration ──────────────────────────────────────────────────
+function renderCalibration(d) {
+  const { regression, summary, weigh_in_windows, regression_line,
+          error_rate_kcal_per_day, dates } = d;
+  const slope = regression.slope;
+
+  const slopeDesc = slope < 0.9 ? "over-estimates deficit"
+                  : slope > 1.1 ? "under-estimates deficit"
+                  : "well-calibrated";
+  const errVal   = summary.final_error_lb;
+  const errClass = errVal > 0.5 ? "positive" : errVal < -0.5 ? "negative" : "neutral";
+
+  document.getElementById("cal-cards").innerHTML = `
     <div class="card">
       <div class="card-label">Calibration Slope</div>
       <div class="card-value neutral">${slope.toFixed(2)}×</div>
@@ -224,134 +322,86 @@ async function main() {
     </div>
     <div class="card">
       <div class="card-label">Total Drift</div>
-      <div class="card-value ${errorClass}">${sign(errorVal)}${errorVal} lb</div>
-      <div class="card-sub">actual vs. predicted (cumulative)</div>
+      <div class="card-value ${errClass}">${sign(errVal)}${errVal} lb</div>
+      <div class="card-sub">actual − predicted (cumulative)</div>
     </div>
     <div class="card">
-      <div class="card-label">Predicted</div>
+      <div class="card-label">Predicted Change</div>
       <div class="card-value neutral">${sign(summary.total_predicted_change_lb)}${summary.total_predicted_change_lb} lb</div>
       <div class="card-sub">from logged calories</div>
     </div>
     <div class="card">
-      <div class="card-label">Actual</div>
+      <div class="card-label">Actual Change</div>
       <div class="card-value neutral">${sign(summary.total_actual_change_lb)}${summary.total_actual_change_lb} lb</div>
       <div class="card-sub">from scale</div>
     </div>
     <div class="card">
       <div class="card-label">Log Coverage</div>
       <div class="card-value neutral">${summary.coverage_pct}%</div>
-      <div class="card-sub">${summary.logged_days} of ${summary.total_days} days</div>
+      <div class="card-sub">${summary.logged_days} / ${summary.total_days} days</div>
     </div>
     <div class="card">
       <div class="card-label">R²</div>
       <div class="card-value neutral">${regression.r2.toFixed(2)}</div>
-      <div class="card-sub">predicted explains actual variance</div>
+      <div class="card-sub">predicted explains actual</div>
     </div>
   `;
 
-  document.getElementById("period").textContent =
-    `${dates[0]} → ${dates[dates.length - 1]}`;
-
-  // ── Chart 1: Cumulative weight change ─────────────────────────────────
-  Plotly.newPlot("chart-cumulative", [
-    {
-      x: dates, y: cumulative_predicted_lb,
-      name: "Predicted", type: "scatter", mode: "lines",
-      line: { color: "#2563eb", width: 2 },
-    },
-    {
-      x: dates, y: cumulative_actual_lb,
-      name: "Actual", type: "scatter", mode: "lines",
-      line: { color: "#64748b", width: 2, dash: "dot" },
-      connectgaps: false,
-    },
-  ], {
-    ...LAYOUT_BASE,
-    legend: { orientation: "h", x: 0, y: 1.15 },
-    yaxis: { ...LAYOUT_BASE.yaxis, title: "Weight change (lb)" },
-    xaxis: { ...LAYOUT_BASE.xaxis, type: "date" },
-  }, PLOTLY_CONFIG);
-
-  // ── Chart 2: Error rate (consistency check) ───────────────────────────
-  // diff(28)/28*3500: kcal/day gap accumulated in each 28-day window.
-  // Flat = consistent bias. Trend/erratic = bias is shifting.
-  const rateColors = error_rate_kcal_per_day.map(v => v === null ? "#e2e8f0" : v > 0 ? "#fca5a5" : "#86efac");
-
+  // Error rate chart
+  const rateColors = error_rate_kcal_per_day.map(v =>
+    v === null ? "#e2e8f0" : v > 0 ? "#fca5a5" : "#86efac");
   Plotly.newPlot("chart-error", [
-    {
-      x: dates, y: error_rate_kcal_per_day,
-      name: "Error rate (kcal/day)", type: "bar",
-      marker: { color: rateColors },
-    },
+    { x: dates, y: error_rate_kcal_per_day, name: "Error rate", type: "bar",
+      marker: { color: rateColors } },
   ], {
-    ...LAYOUT_BASE,
-    yaxis: { ...LAYOUT_BASE.yaxis, title: "Error rate (kcal/day)", zerolinewidth: 1.5 },
-    xaxis: { ...LAYOUT_BASE.xaxis, type: "date" },
+    ...LAYOUT,
+    yaxis: { ...LAYOUT.yaxis, title: "kcal/day", zerolinewidth: 1.5 },
     shapes: [{ type: "line", x0: dates[0], x1: dates[dates.length-1], y0: 0, y1: 0,
                line: { color: "#94a3b8", width: 1 } }],
   }, PLOTLY_CONFIG);
 
-  // ── Chart 3: Scatter regression ────────────────────────────────────────
+  // Regression scatter
   const wx = weigh_in_windows.map(w => w.predicted_change_lb);
   const wy = weigh_in_windows.map(w => w.actual_change_lb);
   const wlabels = weigh_in_windows.map(w =>
-    `${w.start} → ${w.end}<br>Predicted: ${sign(w.predicted_change_lb)}${w.predicted_change_lb} lb<br>Actual: ${sign(w.actual_change_lb)}${w.actual_change_lb} lb<br>${w.days} days`
-  );
-
-  // axis range padded
+    `${w.start} → ${w.end}<br>Predicted: ${sign(w.predicted_change_lb)}${w.predicted_change_lb} lb<br>Actual: ${sign(w.actual_change_lb)}${w.actual_change_lb} lb<br>${w.days} days`);
   const allVals = [...wx, ...wy];
   const pad = 0.5;
-  const axMin = Math.min(...allVals) - pad;
-  const axMax = Math.max(...allVals) + pad;
+  const axMin = Math.min(...allVals) - pad, axMax = Math.max(...allVals) + pad;
 
   Plotly.newPlot("chart-scatter", [
-    // perfect accuracy reference line (slope = 1)
-    {
-      x: [axMin, axMax], y: [axMin, axMax],
-      name: "Perfect (slope=1)", type: "scatter", mode: "lines",
-      line: { color: "#cbd5e1", width: 1.5, dash: "dash" },
-      showlegend: true,
-    },
-    // regression line
-    {
-      x: regression_line.x, y: regression_line.y,
-      name: `Regression (slope=${slope.toFixed(2)})`,
-      type: "scatter", mode: "lines",
-      line: { color: "#2563eb", width: 2 },
-    },
-    // data points
-    {
-      x: wx, y: wy,
-      name: "Weigh-in window", type: "scatter", mode: "markers",
-      text: wlabels,
-      hovertemplate: "%{text}<extra></extra>",
-      marker: { color: "#1e293b", size: 8, opacity: 0.8 },
-    },
+    { x: [axMin, axMax], y: [axMin, axMax], name: "Perfect (slope=1)", type: "scatter", mode: "lines",
+      line: { color: "#cbd5e1", width: 1.5, dash: "dash" } },
+    { x: regression_line.x, y: regression_line.y, name: `Regression (${slope.toFixed(2)}×)`,
+      type: "scatter", mode: "lines", line: { color: "#2563eb", width: 2 } },
+    { x: wx, y: wy, name: "Window", type: "scatter", mode: "markers",
+      text: wlabels, hovertemplate: "%{text}<extra></extra>",
+      marker: { color: "#1e293b", size: 8, opacity: 0.8 } },
   ], {
-    ...LAYOUT_BASE,
+    ...LAYOUT,
     legend: { orientation: "h", x: 0, y: 1.18 },
-    xaxis: { ...LAYOUT_BASE.xaxis, title: "Predicted change (lb)", range: [axMin, axMax] },
-    yaxis: { ...LAYOUT_BASE.yaxis, title: "Actual change (lb)",    range: [axMin, axMax] },
+    xaxis: { ...LAYOUT.xaxis, title: "Predicted change (lb)", range: [axMin, axMax], type: "linear" },
+    yaxis: { ...LAYOUT.yaxis, title: "Actual change (lb)",    range: [axMin, axMax] },
   }, PLOTLY_CONFIG);
 
-  // ── Interpretation ──────────────────────────────────────────────────────
-  const slopePct = Math.abs((1 - slope) * 100).toFixed(0);
+  // Interpretation
+  const slopePct  = Math.abs((1 - slope) * 100).toFixed(0);
   const direction = slope < 1 ? "under-logs deficit" : "over-logs deficit";
-  const kcalOffset = Math.abs(regression.intercept * 3500).toFixed(0);
-
+  const kcalOff   = Math.abs(regression.intercept * 3500).toFixed(0);
   document.getElementById("insight").innerHTML =
-    `<strong>Interpretation:</strong> A regression slope of <strong>${slope.toFixed(3)}</strong> means your logged calorie balance
+    `<strong>Interpretation:</strong> Slope = <strong>${slope.toFixed(3)}</strong> — your logged calorie balance
     systematically ${direction} by ~${slopePct}%. ` +
     (Math.abs(regression.intercept) > 0.3
-      ? `There is also a constant offset of ~${kcalOffset} kcal (intercept = ${regression.intercept.toFixed(2)} lb), suggesting a fixed daily logging gap independent of activity level. `
+      ? `A constant offset of ~${kcalOff} kcal (intercept = ${regression.intercept.toFixed(2)} lb) suggests a fixed daily logging gap independent of activity. `
       : "") +
-    `R² = ${regression.r2.toFixed(2)} — your predictions explain ${(regression.r2 * 100).toFixed(0)}% of the variance in actual weight change. ` +
+    `R² = ${regression.r2.toFixed(2)} (${(regression.r2 * 100).toFixed(0)}% of actual variance explained by predictions). ` +
     `<strong>Calibration factor: multiply your logged deficit by ${(1/slope).toFixed(2)} to match observed weight change.</strong>`;
 }
 
 main().catch(err => {
   document.querySelector("main").innerHTML =
-    `<div class="panel"><div class="panel-title" style="color:#dc2626">Failed to load data</div><pre style="font-size:0.8rem;color:#6c757d;margin-top:0.5rem">${err}</pre></div>`;
+    `<div class="panel"><div class="panel-title" style="color:#dc2626">Failed to load data</div>
+     <pre style="font-size:0.8rem;color:#6c757d;margin-top:0.5rem">${err}</pre></div>`;
 });
 </script>
 </body>
