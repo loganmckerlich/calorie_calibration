@@ -45,7 +45,13 @@ def build():
         "weight_last":  wk_w_last,
         "n_days":       wk_ndays,
     }).dropna()
-    wk = wk[wk["n_days"] >= 5]  # skip partial edge weeks
+    wk = wk[wk["n_days"] >= 5]
+
+    # Restrict to weeks anchored by real weigh-ins on both ends.
+    # After the last weigh-in, weightImputed is ffill'd flat → actual_deficit = 0.
+    first_weighin = df.index[df["weight"].notna()].min()
+    last_weighin  = df.index[df["weight"].notna()].max()
+    wk = wk[(wk.index >= first_weighin) & (wk.index <= last_weighin)]
 
     wk["tracked_deficit_kcal"] = (wk["burned"] - wk["consumed"]).round(0)
     wk["actual_loss_lb"]       = wk["weight_first"] - wk["weight_last"]
