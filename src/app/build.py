@@ -29,97 +29,88 @@ def build():
     df = impute_calories(df)
     df = impute_weight(df)
 
-    # net calories per day: surplus = positive, deficit = negative
-    df["net_calories"] = df["consumedKilocaloriesImputed"] - df["totalKilocalories"]
+    # ── Weekly analysis ────────────────────────────────────────────────────
+    # Each Mon-Sun window is independent: tracked deficit vs actual deficit
+    # inferred from imputed weight change. Error is spread evenly over the week.
+    wk_burned   = df["totalKilocalories"].resample("W-MON").sum()
+    wk_consumed = df["consumedKilocaloriesImputed"].resample("W-MON").sum()
+    wk_w_first  = df["weightImputed"].resample("W-MON").first()
+    wk_w_last   = df["weightImputed"].resample("W-MON").last()
+    wk_ndays    = df["totalKilocalories"].resample("W-MON").count()
 
-    # cumulative predicted weight change (lbs) from day 0
-    df["predicted_delta_lb"] = df["net_calories"] / 3500.0
-    df["cumulative_predicted_lb"] = df["predicted_delta_lb"].cumsum()
+    wk = pd.DataFrame({
+        "burned":       wk_burned,
+        "consumed":     wk_consumed,
+        "weight_first": wk_w_first,
+        "weight_last":  wk_w_last,
+        "n_days":       wk_ndays,
+    }).dropna()
+    wk = wk[wk["n_days"] >= 5]  # skip partial edge weeks
 
-    # cumulative actual weight change
+    wk["tracked_deficit_kcal"] = (wk["burned"] - wk["consumed"]).round(0)
+    wk["actual_loss_lb"]       = wk["weight_first"] - wk["weight_last"]
+    wk["actual_deficit_kcal"]  = (wk["actual_loss_lb"] * 3500).round(0)
+    # error > 0: tracked more deficit than scale shows (over-estimated deficit)
+    wk["error_kcal"]           = wk["tracked_deficit_kcal"] - wk["actual_deficit_kcal"]
+    wk["daily_error_kcal"]     = (wk["error_kcal"] / wk["n_days"]).round(0)
+
+    avg_daily_error    = round(float(wk["daily_error_kcal"].mean()), 0)
+    median_daily_error = round(float(wk["daily_error_kcal"].median()), 0)
+    pct_weeks_over     = round(float((wk["error_kcal"] > 0).mean() * 100), 1)
+
+    wk_labels = [d.strftime("%b %d") for d in wk.index]
+
+    # ── Overall cumulative totals (for summary cards) ──────────────────────
     start_weight = df["weightImputed"].iloc[0]
-    df["cumulative_actual_lb"] = df["weightImputed"] - start_weight
-
-    # error: how much actual diverges from predicted
-    df["error_lb"]   = df["cumulative_actual_lb"] - df["cumulative_predicted_lb"]
-    df["error_kcal"] = df["error_lb"] * 3500
-
-    # Rolling error rate: how many kcal/day is the bias in each 28-day window?
-    # diff(28) = how much cumulative error grew over the past 28 days → divide for per-day rate.
-    # A flat line = consistent bias; slope up/down = bias is changing.
-    df["error_rate_kcal_per_day"] = (df["error_lb"].diff(28) / 28 * 3500).rolling(7, min_periods=3).mean()
-
-    # per-weigh-in-window stats
-    weigh_in_dates = df.index[df["weight"].notna()]
-    windows = []
-    for i in range(1, len(weigh_in_dates)):
-        s, e = weigh_in_dates[i - 1], weigh_in_dates[i]
-        predicted_change = df.loc[s:e, "predicted_delta_lb"].sum()
-        actual_change    = float(df.loc[e, "weight"]) - float(df.loc[s, "weight"])
-        days             = int((e - s).days)
-        pct_error        = round((predicted_change - actual_change) / abs(actual_change) * 100, 1) if actual_change != 0 else None
-        windows.append({
-            "start": s.strftime("%Y-%m-%d"),
-            "end":   e.strftime("%Y-%m-%d"),
-            "predicted_change_lb": round(predicted_change, 2),
-            "actual_change_lb":    round(actual_change, 2),
-            "days": days,
-            "pct_error": pct_error,
-        })
-
-    # ── Key calibration metrics ────────────────────────────────────────────
-    # Use first→last weigh-in window for most grounded estimate
-    first_wi, last_wi = weigh_in_dates[0], weigh_in_dates[-1]
-    span_days = (last_wi - first_wi).days
-    total_error_kcal = float(df.loc[last_wi, "error_kcal"])
-    daily_kcal_error = round(total_error_kcal / span_days) if span_days > 0 else 0
-
-    avg_daily_net = float(df.loc[first_wi:last_wi, "net_calories"].mean())
-    avg_pct_error = round(daily_kcal_error / abs(avg_daily_net) * 100, 1) if avg_daily_net != 0 else 0.0
-
-    # window pct errors (finite windows only)
-    valid_pcts = [w["pct_error"] for w in windows if w["pct_error"] is not None]
-    median_window_pct_error = round(float(np.median(valid_pcts)), 1) if valid_pcts else 0.0
+    end_weight   = df["weightImputed"].iloc[-1]
+    actual_total_loss_lb    = round(start_weight - end_weight, 1)
+    tracked_total_deficit   = round(float((df["totalKilocalories"] - df["consumedKilocaloriesImputed"]).sum()), 0)
+    predicted_total_loss_lb = round(tracked_total_deficit / 3500, 1)
 
     logged_days = int(df["consumedKilocalories"].notna().sum())
     total_days  = len(df)
 
-    # 7-day rolling averages for health charts (smooths noise)
-    df["hr_resting_smooth"]  = df["restingHeartRate"].rolling(7, min_periods=3).mean()
-    df["hr_max_smooth"]      = df["maxHeartRate"].rolling(7, min_periods=3).mean()
-    df["calories_burned_smooth"]   = df["totalKilocalories"].rolling(7, min_periods=3).mean()
-    df["calories_consumed_smooth"] = df["consumedKilocaloriesImputed"].rolling(7, min_periods=3).mean()
+    # ── Health page rolling averages ───────────────────────────────────────
+    df["hr_resting_smooth"]         = df["restingHeartRate"].rolling(7, min_periods=3).mean()
+    df["hr_max_smooth"]             = df["maxHeartRate"].rolling(7, min_periods=3).mean()
+    df["calories_burned_smooth"]    = df["totalKilocalories"].rolling(7, min_periods=3).mean()
+    df["calories_consumed_smooth"]  = df["consumedKilocaloriesImputed"].rolling(7, min_periods=3).mean()
 
     out = {
         "dates": [d.strftime("%Y-%m-%d") for d in df.index],
         # health page
-        "hr_resting":         to_list(df["restingHeartRate"], 0),
-        "hr_max":             to_list(df["maxHeartRate"], 0),
-        "hr_resting_smooth":  to_list(df["hr_resting_smooth"], 1),
-        "hr_max_smooth":      to_list(df["hr_max_smooth"], 1),
-        "calories_burned":    to_list(df["totalKilocalories"], 0),
-        "calories_consumed":  to_list(df["consumedKilocaloriesImputed"], 0),
+        "hr_resting":               to_list(df["restingHeartRate"], 0),
+        "hr_max":                   to_list(df["maxHeartRate"], 0),
+        "hr_resting_smooth":        to_list(df["hr_resting_smooth"], 1),
+        "hr_max_smooth":            to_list(df["hr_max_smooth"], 1),
+        "calories_burned":          to_list(df["totalKilocalories"], 0),
+        "calories_consumed":        to_list(df["consumedKilocaloriesImputed"], 0),
         "calories_burned_smooth":   to_list(df["calories_burned_smooth"], 0),
         "calories_consumed_smooth": to_list(df["calories_consumed_smooth"], 0),
-        "weight":             to_list(df["weight"], 1),
-        # calibration page
-        "error_kcal":              to_list(df["error_kcal"], 0),
-        "error_rate_kcal_per_day": to_list(df["error_rate_kcal_per_day"], 0),
-        "weigh_in_windows": windows,
-        "calibration": {
-            "daily_kcal_error":        daily_kcal_error,
-            "avg_pct_error":           avg_pct_error,
-            "median_window_pct_error": median_window_pct_error,
-            "span_days":               span_days,
+        "weight":                   to_list(df["weight"], 1),
+        # calibration page — weekly independent windows
+        "weeks": {
+            "labels":               wk_labels,
+            "tracked_deficit_kcal": [int(v) for v in wk["tracked_deficit_kcal"]],
+            "actual_deficit_kcal":  [int(v) for v in wk["actual_deficit_kcal"]],
+            "error_kcal":           [int(v) for v in wk["error_kcal"]],
+            "daily_error_kcal":     [int(v) for v in wk["daily_error_kcal"]],
+            "n_days":               [int(v) for v in wk["n_days"]],
+            "summary": {
+                "avg_daily_error_kcal":    int(avg_daily_error),
+                "median_daily_error_kcal": int(median_daily_error),
+                "pct_weeks_over_tracked":  pct_weeks_over,
+                "n_weeks":                 len(wk),
+            },
         },
         "summary": {
-            "start_weight_lb":           round(start_weight, 1),
-            "total_days":                total_days,
-            "logged_days":               logged_days,
-            "coverage_pct":              round(100 * logged_days / total_days, 1),
-            "total_predicted_change_lb": round(float(df["cumulative_predicted_lb"].iloc[-1]), 1),
-            "total_actual_change_lb":    round(float(df["cumulative_actual_lb"].iloc[-1]), 1),
-            "final_error_lb":            round(float(df["error_lb"].iloc[-1]), 1),
+            "start_weight_lb":          round(start_weight, 1),
+            "total_days":               total_days,
+            "logged_days":              logged_days,
+            "coverage_pct":             round(100 * logged_days / total_days, 1),
+            "tracked_total_deficit_kcal": int(tracked_total_deficit),
+            "predicted_total_loss_lb":  predicted_total_loss_lb,
+            "actual_total_loss_lb":     actual_total_loss_lb,
         },
     }
 
@@ -127,12 +118,11 @@ def build():
         json.dump(out, f)
 
     s = out["summary"]
-    c = out["calibration"]
+    ws = out["weeks"]["summary"]
     print(f"✓  Wrote src/app/data.json")
-    print(f"   Period:     {out['dates'][0]} → {out['dates'][-1]}  ({total_days} days, {logged_days} logged)")
-    print(f"   Predicted:  {s['total_predicted_change_lb']:+.1f} lb")
-    print(f"   Actual:     {s['total_actual_change_lb']:+.1f} lb")
-    print(f"   Daily kcal error: {c['daily_kcal_error']:+d} kcal/day  ({c['avg_pct_error']:+.1f}%)")
+    print(f"   Period:      {out['dates'][0]} → {out['dates'][-1]}  ({total_days} days, {logged_days} logged)")
+    print(f"   Predicted loss: {s['predicted_total_loss_lb']:+.1f} lb  |  Actual: {s['actual_total_loss_lb']:+.1f} lb")
+    print(f"   Avg daily error: {ws['avg_daily_error_kcal']:+d} kcal/day  |  {ws['pct_weeks_over_tracked']}% of weeks over-tracked")
 
 
 if __name__ == "__main__":

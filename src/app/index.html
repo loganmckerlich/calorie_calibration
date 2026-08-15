@@ -171,22 +171,23 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">Error Rate Over Time (Consistency Check)</div>
+    <div class="panel-title">Tracked Deficit vs. Actual Deficit — Week by Week</div>
     <div class="panel-desc">
-      How many kcal/day is the systematic error in each rolling 28-day window?
-      A <strong>flat line</strong> = stable, predictable bias.
-      A <strong>trend or erratic line</strong> = logging behavior or activity estimation shifted.
+      Each week: what the calorie math says you burned off vs. what the scale (via imputed weight)
+      says actually happened. Both in kcal. If tracked consistently exceeds actual, you\'re
+      over-estimating your deficit every week.
     </div>
-    <div id="chart-error"></div>
+    <div id="chart-deficit"></div>
   </div>
 
   <div class="panel">
-    <div class="panel-title">Predicted vs. Actual Change by Weigh-In Period</div>
+    <div class="panel-title">Average Daily Error by Week</div>
     <div class="panel-desc">
-      Each period between two scale readings: what the calorie math said should happen vs. what the scale recorded.
-      Divergence in the same direction every period = systematic bias.
+      Weekly error spread evenly across each day: how many kcal/day was the gap between
+      what you tracked and what your body recorded.
+      Bars above zero = over-tracked (predicted more loss than occurred).
     </div>
-    <div id="chart-windows"></div>
+    <div id="chart-daily-error"></div>
     <div id="insight" class="insight"></div>
   </div>
 
@@ -304,100 +305,110 @@ function renderHealth(d) {
 
 // ── Page 2: Calibration ──────────────────────────────────────────────────
 function renderCalibration(d) {
-  const { calibration, summary, weigh_in_windows,
-          error_rate_kcal_per_day, dates } = d;
+  const { weeks, summary } = d;
+  const ws = weeks.summary;
 
-  const errVal    = summary.final_error_lb;
-  const errClass  = errVal > 0.5 ? "positive" : errVal < -0.5 ? "negative" : "neutral";
-  const dErr      = calibration.daily_kcal_error;
-  const dErrClass = dErr > 0 ? "positive" : "negative";
+  const lossDelta  = summary.actual_total_loss_lb - summary.predicted_total_loss_lb;
+  const dErrClass  = ws.avg_daily_error_kcal > 0 ? "positive" : "negative";
 
   document.getElementById("cal-cards").innerHTML = `
     <div class="card">
-      <div class="card-label">Daily Calorie Error</div>
-      <div class="card-value ${dErrClass}">${dErr > 0 ? "+" : ""}${dErr.toLocaleString()}</div>
-      <div class="card-sub">kcal/day over- or under-estimated</div>
+      <div class="card-label">Avg Daily Error</div>
+      <div class="card-value ${dErrClass}">${ws.avg_daily_error_kcal > 0 ? "+" : ""}${ws.avg_daily_error_kcal.toLocaleString()}</div>
+      <div class="card-sub">kcal/day over-tracked</div>
     </div>
     <div class="card">
-      <div class="card-label">Avg % Error / Day</div>
-      <div class="card-value ${dErrClass}">${dErr > 0 ? "+" : ""}${calibration.avg_pct_error}%</div>
-      <div class="card-sub">vs. avg logged daily deficit</div>
+      <div class="card-label">Median Daily Error</div>
+      <div class="card-value ${dErrClass}">${ws.median_daily_error_kcal > 0 ? "+" : ""}${ws.median_daily_error_kcal.toLocaleString()}</div>
+      <div class="card-sub">kcal/day (weekly median)</div>
     </div>
     <div class="card">
-      <div class="card-label">Median Window Error</div>
-      <div class="card-value neutral">${calibration.median_window_pct_error > 0 ? "+" : ""}${calibration.median_window_pct_error}%</div>
-      <div class="card-sub">predicted vs. actual per weigh-in period</div>
+      <div class="card-label">Weeks Over-Tracked</div>
+      <div class="card-value positive">${ws.pct_weeks_over_tracked}%</div>
+      <div class="card-sub">of ${ws.n_weeks} weeks</div>
     </div>
     <div class="card">
-      <div class="card-label">Total Drift</div>
-      <div class="card-value ${errClass}">${errVal > 0 ? "+" : ""}${errVal} lb</div>
-      <div class="card-sub">actual − predicted (cumulative)</div>
+      <div class="card-label">Predicted Loss</div>
+      <div class="card-value neutral">${summary.predicted_total_loss_lb > 0 ? "+" : ""}${summary.predicted_total_loss_lb} lb</div>
+      <div class="card-sub">from tracked deficit</div>
     </div>
     <div class="card">
-      <div class="card-label">Predicted Change</div>
-      <div class="card-value neutral">${sign(summary.total_predicted_change_lb)}${summary.total_predicted_change_lb} lb</div>
-      <div class="card-sub">from logged calories</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Actual Change</div>
-      <div class="card-value neutral">${sign(summary.total_actual_change_lb)}${summary.total_actual_change_lb} lb</div>
+      <div class="card-label">Actual Loss</div>
+      <div class="card-value neutral">${summary.actual_total_loss_lb > 0 ? "+" : ""}${summary.actual_total_loss_lb} lb</div>
       <div class="card-sub">from scale</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Loss Gap</div>
+      <div class="card-value ${lossDelta < 0 ? "positive" : "negative"}">${lossDelta > 0 ? "+" : ""}${lossDelta.toFixed(1)} lb</div>
+      <div class="card-sub">actual minus predicted</div>
     </div>
   `;
 
-  // Error rate chart
-  const rateColors = error_rate_kcal_per_day.map(v =>
-    v === null ? "#e2e8f0" : v > 0 ? "#fca5a5" : "#86efac");
-  Plotly.newPlot("chart-error", [
-    { x: dates, y: error_rate_kcal_per_day, name: "Error rate", type: "bar",
-      marker: { color: rateColors } },
-  ], {
-    ...LAYOUT,
-    yaxis: { ...LAYOUT.yaxis, title: "kcal/day", zerolinewidth: 1.5 },
-    shapes: [{ type: "line", x0: dates[0], x1: dates[dates.length-1], y0: 0, y1: 0,
-               line: { color: "#94a3b8", width: 1 } }],
-  }, PLOTLY_CONFIG);
+  const xAxis = { ...LAYOUT.xaxis, type: "category", tickangle: -40 };
 
-  // Per-period grouped bar chart: predicted vs actual per weigh-in window
-  const wLabels  = weigh_in_windows.map(w => `${w.start}<br>→${w.end}`);
-  const wPred    = weigh_in_windows.map(w => w.predicted_change_lb);
-  const wActual  = weigh_in_windows.map(w => w.actual_change_lb);
-  const wTooltip = weigh_in_windows.map(w =>
-    `${w.start} → ${w.end} (${w.days}d)<br>` +
-    `Predicted: ${sign(w.predicted_change_lb)}${w.predicted_change_lb} lb<br>` +
-    `Actual: ${sign(w.actual_change_lb)}${w.actual_change_lb} lb<br>` +
-    `Error: ${w.pct_error !== null ? (w.pct_error > 0 ? "+" : "") + w.pct_error + "%" : "n/a"}`);
-
-  Plotly.newPlot("chart-windows", [
-    { x: wLabels, y: wPred,   name: "Predicted", type: "bar",
+  // Chart 1: Tracked deficit vs actual deficit by week (grouped bars)
+  Plotly.newPlot("chart-deficit", [
+    {
+      x: weeks.labels, y: weeks.tracked_deficit_kcal,
+      name: "Tracked deficit", type: "bar",
       marker: { color: "#93c5fd" },
-      text: wTooltip, hovertemplate: "%{text}<extra></extra>" },
-    { x: wLabels, y: wActual, name: "Actual",    type: "bar",
+      hovertemplate: "%{x}<br>Tracked: %{y:,} kcal<extra></extra>",
+    },
+    {
+      x: weeks.labels, y: weeks.actual_deficit_kcal,
+      name: "Actual deficit (from scale)", type: "bar",
       marker: { color: "#475569" },
-      text: wTooltip, hovertemplate: "%{text}<extra></extra>" },
+      hovertemplate: "%{x}<br>Actual: %{y:,} kcal<extra></extra>",
+    },
   ], {
     ...LAYOUT,
     barmode: "group",
     legend: LEG,
-    xaxis: { ...LAYOUT.xaxis, type: "category", tickangle: -35 },
-    yaxis: { ...LAYOUT.yaxis, title: "Weight change (lb)", zerolinewidth: 1.5 },
+    xaxis: xAxis,
+    yaxis: { ...LAYOUT.yaxis, title: "kcal / week" },
+  }, PLOTLY_CONFIG);
+
+  // Chart 2: Daily error spread evenly per week
+  const errColors = weeks.daily_error_kcal.map(v => v > 0 ? "#fca5a5" : "#86efac");
+  Plotly.newPlot("chart-daily-error", [
+    {
+      x: weeks.labels, y: weeks.daily_error_kcal,
+      name: "Daily error", type: "bar",
+      marker: { color: errColors },
+      hovertemplate: "%{x}<br>Daily error: %{y:+,} kcal/day<extra></extra>",
+    },
+    {
+      x: [weeks.labels[0], weeks.labels[weeks.labels.length - 1]],
+      y: [ws.median_daily_error_kcal, ws.median_daily_error_kcal],
+      name: `Median (${ws.median_daily_error_kcal > 0 ? "+" : ""}${ws.median_daily_error_kcal.toLocaleString()} kcal/day)`,
+      type: "scatter", mode: "lines",
+      line: { color: "#64748b", width: 1.5, dash: "dot" },
+    },
+  ], {
+    ...LAYOUT,
+    legend: LEG,
+    xaxis: xAxis,
+    yaxis: { ...LAYOUT.yaxis, title: "kcal/day", zerolinewidth: 1.5 },
+    shapes: [{ type: "line", x0: weeks.labels[0], x1: weeks.labels[weeks.labels.length-1],
+               y0: 0, y1: 0, line: { color: "#94a3b8", width: 1 } }],
   }, PLOTLY_CONFIG);
 
   // Insight
-  const dErrAbs   = Math.abs(dErr);
-  const direction = dErr > 0 ? "over-estimating your deficit" : "under-estimating your deficit";
-  const fix       = dErr > 0
-    ? `log ~${dErrAbs.toLocaleString()} more kcal of food per day, or reduce your assumed burn by ~${dErrAbs.toLocaleString()} kcal`
-    : `log ~${dErrAbs.toLocaleString()} fewer kcal of food per day, or increase your assumed burn by ~${dErrAbs.toLocaleString()} kcal`;
+  const absErr    = Math.abs(ws.avg_daily_error_kcal);
+  const direction = ws.avg_daily_error_kcal > 0 ? "over-estimating" : "under-estimating";
+  const fix       = ws.avg_daily_error_kcal > 0
+    ? `log ~${absErr.toLocaleString()} more kcal of food per day, or reduce your assumed burn by ~${absErr.toLocaleString()} kcal/day`
+    : `log ~${absErr.toLocaleString()} fewer kcal of food per day, or increase your assumed burn by ~${absErr.toLocaleString()} kcal/day`;
   document.getElementById("insight").innerHTML =
-    `<strong>Bottom line:</strong> On average you are ${direction} by
-    <strong>${dErr > 0 ? "+" : ""}${dErr.toLocaleString()} kcal/day</strong>
-    (${dErr > 0 ? "+" : ""}${calibration.avg_pct_error}% of your logged daily deficit).
-    To correct: ${fix}.
-    <br><br>
-    The median per-window error is ${calibration.median_window_pct_error > 0 ? "+" : ""}${calibration.median_window_pct_error}%.
-    Check the error rate chart — if bars consistently stay on one side,
-    the bias is systematic and correctable. Scattered bars = short-window noise dominates.`;
+    `<strong>Bottom line:</strong> Across ${ws.n_weeks} weeks you are ${direction} your deficit by an average of
+    <strong>${ws.avg_daily_error_kcal > 0 ? "+" : ""}${ws.avg_daily_error_kcal.toLocaleString()} kcal/day</strong>
+    (median: ${ws.median_daily_error_kcal > 0 ? "+" : ""}${ws.median_daily_error_kcal.toLocaleString()} kcal/day).
+    ${ws.pct_weeks_over_tracked}% of weeks show a positive error — the bias is
+    ${ws.pct_weeks_over_tracked > 70 ? "<strong>highly consistent</strong>, suggesting a systematic logging gap" :
+      ws.pct_weeks_over_tracked > 50 ? "<strong>mostly consistent</strong>, lean toward a systematic cause" :
+      "<strong>mixed</strong>, likely a combination of noise and real tracking variance"}
+    rather than random week-to-week variation.
+    <br><br>To correct going forward: ${fix}.`;
 }
 
 main().catch(err => {
