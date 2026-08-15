@@ -65,9 +65,15 @@ def build():
     wk["error_kcal"]           = wk["tracked_deficit_kcal"] - wk["actual_deficit_kcal"]
     wk["daily_error_kcal"]     = (wk["error_kcal"] / wk["n_days"]).round(0)
 
+    wk["avg_daily_burned"]   = (wk["burned"]   / wk["n_days"]).round(0)
+    wk["avg_daily_consumed"] = (wk["consumed"] / wk["n_days"]).round(0)
+
     avg_daily_error    = round(float(wk["daily_error_kcal"].mean()), 0)
     median_daily_error = round(float(wk["daily_error_kcal"].median()), 0)
     pct_weeks_over     = round(float((wk["error_kcal"] > 0).mean() * 100), 1)
+
+    corr_burn     = round(float(wk["avg_daily_burned"].corr(wk["daily_error_kcal"])), 2)
+    corr_consumed = round(float(wk["avg_daily_consumed"].corr(wk["daily_error_kcal"])), 2)
 
     wk_labels = [d.strftime("%b %d") for d in wk.index]
 
@@ -107,12 +113,16 @@ def build():
             "actual_deficit_kcal":  [int(v) for v in wk["actual_deficit_kcal"]],
             "error_kcal":           [int(v) for v in wk["error_kcal"]],
             "daily_error_kcal":     [int(v) for v in wk["daily_error_kcal"]],
+            "avg_daily_burned":      [int(v) for v in wk["avg_daily_burned"]],
+            "avg_daily_consumed":    [int(v) for v in wk["avg_daily_consumed"]],
             "n_days":               [int(v) for v in wk["n_days"]],
             "summary": {
                 "avg_daily_error_kcal":    int(avg_daily_error),
                 "median_daily_error_kcal": int(median_daily_error),
                 "pct_weeks_over_tracked":  pct_weeks_over,
                 "n_weeks":                 len(wk),
+                "corr_burn_vs_error":      corr_burn,
+                "corr_consumed_vs_error":  corr_consumed,
             },
         },
         "summary": {

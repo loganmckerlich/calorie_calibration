@@ -153,7 +153,7 @@
 
   <div class="panel">
     <div class="panel-title">Weight</div>
-    <div class="panel-desc">Scale readings only — no interpolation.</div>
+    <div class="panel-desc">Scale readings</div>
     <div id="chart-weight"></div>
   </div>
 
@@ -173,9 +173,7 @@
   <div class="panel">
     <div class="panel-title">Tracked Deficit vs. Actual Deficit — Week by Week</div>
     <div class="panel-desc">
-      Each week: what the calorie math says you burned off vs. what the scale (via imputed weight)
-      says actually happened. Both in kcal. If tracked consistently exceeds actual, you\'re
-      over-estimating your deficit every week.
+      Each week: how many pounds would I have lost if my calorie tracking was perfect vs. how many pounds I actually lost (from imputed scale readings).
     </div>
     <div id="chart-deficit"></div>
   </div>
@@ -183,12 +181,24 @@
   <div class="panel">
     <div class="panel-title">Average Daily Error by Week</div>
     <div class="panel-desc">
-      Weekly error spread evenly across each day: how many kcal/day was the gap between
-      what you tracked and what your body recorded.
-      Bars above zero = over-tracked (predicted more loss than occurred).
+      Weekly error spread evenly across each day: Identifying the bias in my calorie tracking. Positive = over-estimating deficit.
     </div>
     <div id="chart-daily-error"></div>
     <div id="insight" class="insight"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">What Drives the Error?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;text-align:center">Burn (kcal/day) vs Daily Error</div>
+        <div id="chart-err-burn"></div>
+      </div>
+      <div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;text-align:center">Consumption (kcal/day) vs Daily Error</div>
+        <div id="chart-err-consumed"></div>
+      </div>
+    </div>
+    <div id="error-drivers-insight" class="insight"></div>
   </div>
 
 </main>
@@ -244,29 +254,29 @@ function renderHealth(d) {
 
   document.getElementById("health-cards").innerHTML = `
     <div class="card">
-      <div class="card-label">Avg Daily Burn</div>
+      <div class="card-label">Avg Daily Burn (Reported)</div>
       <div class="card-value neutral">${avgBurned.toLocaleString()}</div>
       <div class="card-sub">kcal/day</div>
     </div>
     <div class="card">
-      <div class="card-label">Avg Daily Intake</div>
+      <div class="card-label">Avg Daily Intake (Reported)</div>
       <div class="card-value neutral">${avgConsumed.toLocaleString()}</div>
       <div class="card-sub">kcal/day (imputed)</div>
     </div>
     <div class="card">
-      <div class="card-label">Avg Daily Deficit</div>
+      <div class="card-label">Avg Daily Deficit (Reported)</div>
       <div class="card-value neutral">${(avgBurned - avgConsumed).toLocaleString()}</div>
       <div class="card-sub">kcal/day</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Weight Change (Recorded)</div>
+      <div class="card-value ${wDelta > 0 ? "positive" : "negative"}">${sign(wDelta)}${wDelta} lb</div>
+      <div class="card-sub">${firstW} → ${lastW} lb</div>
     </div>
     <div class="card">
       <div class="card-label">Avg Resting HR</div>
       <div class="card-value neutral">${avgRestHR}</div>
       <div class="card-sub">bpm</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Weight Change</div>
-      <div class="card-value ${wDelta > 0 ? "positive" : "negative"}">${sign(wDelta)}${wDelta} lb</div>
-      <div class="card-sub">${firstW} → ${lastW} lb</div>
     </div>
   `;
 
@@ -412,6 +422,74 @@ function renderCalibration(d) {
       "<strong>mixed</strong>, likely a combination of noise and real tracking variance"}
     rather than random week-to-week variation.
     <br><br>To correct going forward: ${fix}.`;
+
+  // Scatter: error drivers
+  function linreg(xs, ys) {
+    const n = xs.length, mx = xs.reduce((a,b)=>a+b)/n, my = ys.reduce((a,b)=>a+b)/n;
+    const slope = xs.reduce((s,x,i)=>s+(x-mx)*(ys[i]-my),0) / xs.reduce((s,x)=>s+(x-mx)**2,0);
+    return { slope, intercept: my - slope*mx };
+  }
+  function trendLine(xs, reg) {
+    const mn = Math.min(...xs), mx = Math.max(...xs);
+    return { x: [mn, mx], y: [mn*reg.slope+reg.intercept, mx*reg.slope+reg.intercept] };
+  }
+  const scatterLayout = (xtitle) => ({
+    ...LAYOUT,
+    showlegend: false,
+    xaxis: { ...LAYOUT.xaxis, title: xtitle },
+    yaxis: { ...LAYOUT.yaxis, title: "Daily error (kcal)", zeroline: true, zerolinewidth: 1.5 },
+    height: 260,
+  });
+  const burnReg = linreg(weeks.avg_daily_burned, weeks.daily_error_kcal);
+  const burnTrend = trendLine(weeks.avg_daily_burned, burnReg);
+  Plotly.newPlot("chart-err-burn", [
+    {
+      x: weeks.avg_daily_burned, y: weeks.daily_error_kcal, text: weeks.labels,
+      mode: "markers", type: "scatter",
+      marker: { color: "#93c5fd", size: 9 },
+      hovertemplate: "%{text}<br>Burn: %{x:,} kcal/day<br>Error: %{y:+,} kcal/day<extra></extra>",
+    },
+    {
+      x: burnTrend.x, y: burnTrend.y, mode: "lines", type: "scatter",
+      line: { color: "#64748b", width: 1.5, dash: "dot" },
+      hoverinfo: "skip",
+    },
+  ], scatterLayout("Avg daily burn (kcal)"), PLOTLY_CONFIG);
+
+  const conReg = linreg(weeks.avg_daily_consumed, weeks.daily_error_kcal);
+  const conTrend = trendLine(weeks.avg_daily_consumed, conReg);
+  Plotly.newPlot("chart-err-consumed", [
+    {
+      x: weeks.avg_daily_consumed, y: weeks.daily_error_kcal, text: weeks.labels,
+      mode: "markers", type: "scatter",
+      marker: { color: "#fca5a5", size: 9 },
+      hovertemplate: "%{text}<br>Consumed: %{x:,} kcal/day<br>Error: %{y:+,} kcal/day<extra></extra>",
+    },
+    {
+      x: conTrend.x, y: conTrend.y, mode: "lines", type: "scatter",
+      line: { color: "#64748b", width: 1.5, dash: "dot" },
+      hoverinfo: "skip",
+    },
+  ], scatterLayout("Avg daily consumed (kcal)"), PLOTLY_CONFIG);
+
+  // Error-drivers insight
+  const rBurn = ws.corr_burn_vs_error, rCon = ws.corr_consumed_vs_error;
+  function corrDesc(r) {
+    const a = Math.abs(r), dir = r > 0 ? "positive" : "negative";
+    const str = a > 0.6 ? "strong" : a > 0.35 ? "moderate" : "weak";
+    return `${str} ${dir} (r = ${r.toFixed(2)})`;
+  }
+  const dominant = Math.abs(rBurn) > Math.abs(rCon) ? "burn" : "consumption";
+  const burnDir  = rBurn  > 0 ? "higher burn → bigger error (Garmin likely over-estimates on active days)" :
+                               "higher burn → smaller error (burn estimate looks reasonable)";
+  const conDir   = rCon   > 0 ? "higher consumption → bigger error (under-logging on high-intake days)" :
+                               "higher consumption → smaller error (over-logging on high-intake days, or burn under-estimated on low days)";
+  document.getElementById("error-drivers-insight").innerHTML =
+    `<strong>Error drivers:</strong> Correlation between weekly avg burn and daily error is <strong>${corrDesc(rBurn)}</strong>. 
+    Correlation between weekly avg consumption and daily error is <strong>${corrDesc(rCon)}</strong>.
+    The dominant factor appears to be <strong>${dominant}</strong>.
+    <br>• Burn signal: ${burnDir}.
+    <br>• Consumption signal: ${conDir}.`;
 }
 
 main().catch(err => {
