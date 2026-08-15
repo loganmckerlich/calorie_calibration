@@ -26,6 +26,7 @@ def to_list(series, decimals=2):
 
 def build():
     df = load()
+    # (reindex not needed — dataframe already has a complete daily index)
     df = impute_calories(df)
     df = impute_weight(df)
 
@@ -56,6 +57,10 @@ def build():
     wk["tracked_deficit_kcal"] = (wk["burned"] - wk["consumed"]).round(0)
     wk["actual_loss_lb"]       = wk["weight_first"] - wk["weight_last"]
     wk["actual_deficit_kcal"]  = (wk["actual_loss_lb"] * 3500).round(0)
+    # Drop flat-weight weeks — both real weigh-ins at period edges were identical
+    # → interpolated flat → actual = 0 → no calibration signal.
+    wk = wk[wk["actual_deficit_kcal"] != 0]
+
     # error > 0: tracked more deficit than scale shows (over-estimated deficit)
     wk["error_kcal"]           = wk["tracked_deficit_kcal"] - wk["actual_deficit_kcal"]
     wk["daily_error_kcal"]     = (wk["error_kcal"] / wk["n_days"]).round(0)
