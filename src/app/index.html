@@ -294,13 +294,15 @@ function renderHealth(d) {
       line: { color: "#16a34a", width: 2 } },
   ], { ...LAYOUT, legend: LEG, yaxis: { ...LAYOUT.yaxis, title: "bpm" } }, PLOTLY_CONFIG);
 
-  // Weight chart (raw readings only, connected)
-  const wDates = d.dates.filter((_, i) => d.weight[i] !== null);
-  const wVals  = d.weight.filter(v => v !== null);
+  // Weight chart: imputed line + raw scale readings as markers
   Plotly.newPlot("chart-weight", [
-    { x: wDates, y: wVals, name: "Weight", type: "scatter", mode: "lines+markers",
-      line: { color: "#7c3aed", width: 2 }, marker: { size: 6 } },
-  ], { ...LAYOUT, yaxis: { ...LAYOUT.yaxis, title: "lb" } }, PLOTLY_CONFIG);
+    { x: d.dates, y: d.weight_imputed, name: "Weight (imputed)", type: "scatter", mode: "lines",
+      line: { color: "#7c3aed", width: 2 } },
+    { x: d.dates.filter((_, i) => d.weight[i] !== null),
+      y: d.weight.filter(v => v !== null),
+      name: "Scale reading", type: "scatter", mode: "markers",
+      marker: { color: "#4c1d95", size: 7, symbol: "diamond" } },
+  ], { ...LAYOUT, legend: LEG, yaxis: { ...LAYOUT.yaxis, title: "lb" } }, PLOTLY_CONFIG);
 }
 
 // ── Page 2: Calibration ──────────────────────────────────────────────────

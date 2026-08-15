@@ -88,6 +88,7 @@ def build():
         "calories_burned_smooth":   to_list(df["calories_burned_smooth"], 0),
         "calories_consumed_smooth": to_list(df["calories_consumed_smooth"], 0),
         "weight":                   to_list(df["weight"], 1),
+        "weight_imputed":            to_list(df["weightImputed"], 1),
         # calibration page — weekly independent windows
         "weeks": {
             "labels":               wk_labels,
