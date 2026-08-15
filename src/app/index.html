@@ -430,7 +430,7 @@ function renderCalibration(d) {
   const scatterLayout = (xtitle) => ({
     ...LAYOUT,
     showlegend: false,
-    xaxis: { ...LAYOUT.xaxis, title: xtitle },
+    xaxis: { ...LAYOUT.xaxis, type: "linear", title: xtitle },
     yaxis: { ...LAYOUT.yaxis, title: "Daily error (kcal)", zeroline: true, zerolinewidth: 1.5 },
     height: 260,
   });
