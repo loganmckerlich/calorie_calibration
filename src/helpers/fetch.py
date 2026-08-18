@@ -26,7 +26,8 @@ def init_load():
     df = df.merge(weight_df, how='left', left_index=True, right_index=True, validate='1:1', suffixes=('', '_weight'))
     df.index = pd.to_datetime(df.index)
 
-    start_date = pd.to_datetime('2026-03-16') # first day of recent lock in
+    # start_date = pd.to_datetime('2026-03-16') # first day of recent lock in
+    start_date = pd.to_datetime('2026-04-20') # first day of recent lock in
     end_date = pd.to_datetime('2026-08-13') # yesterday aka last full day
 
     df = df[df.index >= start_date]

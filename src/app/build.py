@@ -31,7 +31,7 @@ def build():
     df = impute_weight(df)
 
     # ── Weekly analysis ────────────────────────────────────────────────────
-    # Each Mon-Sun window is independent: tracked deficit vs actual deficit
+    # Each Mon-Sun window is independent: tracked deficit vs implied deficit
     # inferred from imputed weight change. Error is spread evenly over the week.
     wk_burned   = df["totalKilocalories"].resample("W-MON").sum()
     wk_consumed = df["consumedKilocaloriesImputed"].resample("W-MON").sum()

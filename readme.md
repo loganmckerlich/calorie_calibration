@@ -77,7 +77,7 @@ estimation, or both. Options to narrow it down:
 ### 5. Derive a calibration factor
 Once you have a stable systematic error over several windows, express it
 as a percentage or fixed offset:
-- e.g., "actual deficit tracks ~12% smaller than logged deficit" →
+- e.g., "implied deficit tracks ~12% smaller than logged deficit" →
   suggests under-logging intake or over-estimating burn by that margin.
 - Apply this going forward as a correction to either logged intake, burn
   estimate, or the derived prediction — whichever is most likely the

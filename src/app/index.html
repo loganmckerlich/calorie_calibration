@@ -171,7 +171,7 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">Tracked Deficit vs. Actual Deficit — Week by Week</div>
+    <div class="panel-title">Tracked Deficit vs. Implied Deficit — Week by Week</div>
     <div class="panel-desc">
       Each week: how many pounds would I have lost if my calorie tracking was perfect vs. how many pounds I actually lost (from imputed scale readings).
     </div>
@@ -352,18 +352,18 @@ function renderCalibration(d) {
 
   const xAxis = { ...LAYOUT.xaxis, type: "category", tickangle: -40 };
 
-  // Chart 1: Tracked deficit vs actual deficit by week (grouped bars, in lbs)
+  // Chart 1: Tracked deficit vs implied deficit by week (grouped bars, in lbs)
   const toLbs = v => Math.round(v / 3500 * 10) / 10;
   Plotly.newPlot("chart-deficit", [
     {
       x: weeks.labels, y: weeks.tracked_deficit_kcal.map(toLbs),
-      name: "Tracked deficit", type: "bar",
+      name: "Tracked deficit (from calries)", type: "bar",
       marker: { color: "#93c5fd" },
       hovertemplate: "%{x}<br>Tracked: %{y:.1f} lb<extra></extra>",
     },
     {
       x: weeks.labels, y: weeks.actual_deficit_kcal.map(toLbs),
-      name: "Actual deficit (from scale)", type: "bar",
+      name: "Implied deficit (from scale)", type: "bar",
       marker: { color: "#475569" },
       hovertemplate: "%{x}<br>Actual: %{y:.1f} lb<extra></extra>",
     },
