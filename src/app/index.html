@@ -157,6 +157,24 @@
     <div id="chart-weight"></div>
   </div>
 
+  <div class="panel">
+    <div class="panel-title">Active vs. BMR Calories</div>
+    <div class="panel-desc">7-day rolling average of activity calories vs. base metabolic rate — shows how much of your burn comes from exercise vs. just being alive.</div>
+    <div id="chart-active-bmr"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Daily Steps</div>
+    <div class="panel-desc">Daily step count with 7-day rolling average.</div>
+    <div id="chart-steps"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">VO₂ Max &amp; FTP Over Time</div>
+    <div class="panel-desc">Cycling aerobic fitness (VO₂ Max, Garmin estimate) and Functional Threshold Power — both measured by the watch during rides. FTP goes from 279W to 340W.</div>
+    <div id="chart-vo2ftp"></div>
+  </div>
+
 </main>
 </div>
 
@@ -219,6 +237,13 @@
     <div style="font-size:0.75rem;color:#94a3b8;margin:1rem 0 0.25rem;text-align:center">Consumption (kcal/day) vs Daily Error</div>
     <div id="chart-err-consumed"></div>
     <div id="error-drivers-insight" class="insight"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Active Calorie % vs. Daily Error</div>
+    <div class="panel-desc">Does over-estimating the deficit get worse on weeks with a higher activity fraction? If Garmin over-counts exercise calories, higher-activity weeks should show larger errors.</div>
+    <div id="chart-err-active"></div>
+    <div id="active-error-insight" class="insight"></div>
   </div>
 
 </main>
@@ -333,6 +358,47 @@ function renderHealth(d) {
       name: "Scale reading", type: "scatter", mode: "markers",
       marker: { color: "#4c1d95", size: 7, symbol: "diamond" } },
   ], { ...LAYOUT, legend: LEG, yaxis: { ...LAYOUT.yaxis, title: "lb" } }, PLOTLY_CONFIG);
+
+  // Active vs BMR calories
+  Plotly.newPlot("chart-active-bmr", [
+    { x: d.dates, y: d.bmr_cal_smooth,    name: "BMR (7d avg)",    type: "scatter", mode: "lines",
+      line: { color: "#94a3b8", width: 2 }, fill: "tozeroy", fillcolor: "rgba(148,163,184,0.15)" },
+    { x: d.dates, y: d.active_cal_smooth, name: "Active (7d avg)", type: "scatter", mode: "lines",
+      line: { color: "#f97316", width: 2 }, fill: "tonexty", fillcolor: "rgba(249,115,22,0.15)" },
+    { x: d.dates, y: d.active_calories, name: "Active (daily)", type: "scatter", mode: "markers",
+      marker: { color: "#fed7aa", size: 3 }, showlegend: false },
+  ], { ...LAYOUT, legend: LEG, yaxis: { ...LAYOUT.yaxis, title: "kcal" } }, PLOTLY_CONFIG);
+
+  // Steps
+  Plotly.newPlot("chart-steps", [
+    { x: d.dates, y: d.steps,        name: "Steps (daily)",  type: "bar",
+      marker: { color: "#c7d2fe" } },
+    { x: d.dates, y: d.steps_smooth, name: "Steps (7d avg)", type: "scatter", mode: "lines",
+      line: { color: "#4f46e5", width: 2.5 } },
+  ], { ...LAYOUT, legend: LEG,
+       yaxis: { ...LAYOUT.yaxis, title: "steps" },
+       barmode: "overlay" }, PLOTLY_CONFIG);
+
+  // VO2 Max + FTP (dual y-axis)
+  Plotly.newPlot("chart-vo2ftp", [
+    { x: d.vo2max.dates, y: d.vo2max.values,
+      name: "VO₂ Max (cycling)", type: "scatter", mode: "lines+markers",
+      line: { color: "#0ea5e9", width: 2.5 }, marker: { size: 6 },
+      hovertemplate: "%{x}<br>VO₂ Max: %{y} mL/kg/min<extra></extra>",
+    },
+    { x: d.ftp.dates, y: d.ftp.values,
+      name: "FTP (W)", type: "scatter", mode: "markers",
+      marker: { color: "#f59e0b", size: 10, symbol: "diamond" },
+      yaxis: "y2",
+      hovertemplate: "%{x}<br>FTP: %{y} W<extra></extra>",
+    },
+  ], {
+    ...LAYOUT,
+    legend: LEG,
+    yaxis:  { ...LAYOUT.yaxis, title: "VO₂ Max (mL/kg/min)" },
+    yaxis2: { title: "FTP (W)", overlaying: "y", side: "right",
+               showgrid: false, zeroline: false },
+  }, PLOTLY_CONFIG);
 }
 
 // ── Page 2: Calibration ──────────────────────────────────────────────────
@@ -614,6 +680,37 @@ function renderCalibration(d) {
     The dominant factor appears to be <strong>${dominant}</strong>.
     <br>• Burn signal: ${burnDir}.
     <br>• Consumption signal: ${conDir}.`;
+
+  // Active calorie % vs daily error
+  const rActive = ws.corr_active_pct_vs_error;
+  const activeReg = linreg(weeks.avg_active_pct, weeks.daily_error_kcal);
+  const activeTrend = trendLine(weeks.avg_active_pct, activeReg);
+  Plotly.newPlot("chart-err-active", [
+    {
+      x: weeks.avg_active_pct, y: weeks.daily_error_kcal, text: weeks.labels,
+      mode: "markers", type: "scatter",
+      marker: { color: "#f97316", size: 9 },
+      hovertemplate: "%{text}<br>Active: %{x:.1f}%<br>Error: %{y:+,} kcal/day<extra></extra>",
+    },
+    {
+      x: activeTrend.x, y: activeTrend.y, mode: "lines", type: "scatter",
+      line: { color: "#64748b", width: 1.5, dash: "dot" },
+      hoverinfo: "skip",
+    },
+  ], {
+    ...LAYOUT, showlegend: false,
+    xaxis: { ...LAYOUT.xaxis, type: "linear", title: "Active calories as % of total burn" },
+    yaxis: { ...LAYOUT.yaxis, title: "Daily error (kcal)", zeroline: true, zerolinewidth: 1.5 },
+    height: 280,
+  }, PLOTLY_CONFIG);
+  document.getElementById("active-error-insight").innerHTML =
+    `<strong>Active % vs error:</strong> Correlation is <strong>${corrDesc(rActive)}</strong>.
+    ${ Math.abs(rActive) > 0.35
+      ? rActive > 0
+        ? "Weeks where activity represents a higher fraction of total burn tend to have larger tracking errors — consistent with Garmin over-counting exercise calories."
+        : "Weeks with lower activity fraction have larger errors — suggests the baseline BMR estimate may be inflated rather than the activity component."
+      : "No strong relationship between activity fraction and error — the over-estimation appears relatively constant regardless of how active the week was."
+    }`;
 }
 
 main().catch(err => {

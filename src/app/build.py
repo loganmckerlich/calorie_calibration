@@ -29,6 +29,20 @@ def build():
     df = impute_calories(df)
     df = impute_weight(df)
 
+    # ── Load VO2Max + FTP from biometrics JSON ─────────────────────────────
+    bio_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "123302043_userBioMetrics.json")
+    with open(bio_path) as f:
+        bio_raw = json.load(f)
+    vo2_by_date, ftp_by_date = {}, {}
+    for r in bio_raw:
+        date = r["metaData"]["calendarDate"][:10]
+        if r.get("vo2MaxCycling"):
+            vo2_by_date[date] = r["vo2MaxCycling"]
+        if r.get("functionalThresholdPower"):
+            ftp_by_date[date] = r["functionalThresholdPower"]
+    vo2_sorted = sorted(vo2_by_date.items())
+    ftp_sorted = sorted(ftp_by_date.items())
+
     # ── Weekly analysis ────────────────────────────────────────────────────
     # Each Mon-Sun window is independent: tracked deficit vs implied deficit
     # inferred from imputed weight change. Error is spread evenly over the week.
@@ -37,6 +51,7 @@ def build():
     wk_w_first  = df["weightImputed"].resample("W-MON").first()
     wk_w_last   = df["weightImputed"].resample("W-MON").last()
     wk_ndays    = df["totalKilocalories"].resample("W-MON").count()
+    wk_active   = df["activeKilocalories"].resample("W-MON").sum()
 
     wk = pd.DataFrame({
         "burned":       wk_burned,
@@ -44,6 +59,7 @@ def build():
         "weight_first": wk_w_first,
         "weight_last":  wk_w_last,
         "n_days":       wk_ndays,
+        "active_kcal":  wk_active,
     }).dropna()
     wk = wk[wk["n_days"] >= 5]
 
@@ -73,6 +89,9 @@ def build():
 
     corr_burn     = round(float(wk["avg_daily_burned"].corr(wk["daily_error_kcal"])), 2)
     corr_consumed = round(float(wk["avg_daily_consumed"].corr(wk["daily_error_kcal"])), 2)
+
+    wk["avg_active_pct"] = ((wk["active_kcal"] / wk["burned"]) * 100).round(1)
+    corr_active_vs_error = round(float(wk["avg_active_pct"].corr(wk["daily_error_kcal"])), 2)
 
     # ── Cumulative predicted vs. actual weight change ──────────────────────
     # Both series start at 0 on the first week's Monday.
@@ -128,6 +147,9 @@ def build():
     df["hr_max_smooth"]             = df["maxHeartRate"].rolling(7, min_periods=3).mean()
     df["calories_burned_smooth"]    = df["totalKilocalories"].rolling(7, min_periods=3).mean()
     df["calories_consumed_smooth"]  = df["consumedKilocaloriesImputed"].rolling(7, min_periods=3).mean()
+    df["steps_smooth"]              = df["totalSteps"].rolling(7, min_periods=3).mean()
+    df["active_cal_smooth"]         = df["activeKilocalories"].rolling(7, min_periods=3).mean()
+    df["bmr_cal_smooth"]            = df["bmrKilocalories"].rolling(7, min_periods=3).mean()
 
     out = {
         "dates": [d.strftime("%Y-%m-%d") for d in df.index],
@@ -142,6 +164,20 @@ def build():
         "calories_consumed_smooth": to_list(df["calories_consumed_smooth"], 0),
         "weight":                   to_list(df["weight"], 1),
         "weight_imputed":            to_list(df["weightImputed"], 1),
+        "steps":                    to_list(df["totalSteps"].fillna(0), 0),
+        "steps_smooth":             to_list(df["steps_smooth"], 0),
+        "active_calories":          to_list(df["activeKilocalories"], 0),
+        "bmr_calories":             to_list(df["bmrKilocalories"], 0),
+        "active_cal_smooth":        to_list(df["active_cal_smooth"], 0),
+        "bmr_cal_smooth":           to_list(df["bmr_cal_smooth"], 0),
+        "vo2max": {
+            "dates":  [d for d, _ in vo2_sorted],
+            "values": [v for _, v in vo2_sorted],
+        },
+        "ftp": {
+            "dates":  [d for d, _ in ftp_sorted],
+            "values": [v for _, v in ftp_sorted],
+        },
         # calibration page — weekly independent windows
         "weeks": {
             "labels":               wk_labels,
@@ -151,6 +187,7 @@ def build():
             "daily_error_kcal":     [int(v) for v in wk["daily_error_kcal"]],
             "avg_daily_burned":      [int(v) for v in wk["avg_daily_burned"]],
             "avg_daily_consumed":    [int(v) for v in wk["avg_daily_consumed"]],
+            "avg_active_pct":        [float(v) for v in wk["avg_active_pct"]],
             "cum_predicted_lb":      [float(v) for v in wk["cum_predicted_lb"]],
             "cum_actual_lb":         [float(v) for v in wk["cum_actual_lb"]],
             "rolling_daily_error":   [None if (v is None or (isinstance(v, float) and math.isnan(v))) else int(v) for v in wk["rolling_daily_error"]],
@@ -169,6 +206,7 @@ def build():
                 "n_weeks":                 len(wk),
                 "corr_burn_vs_error":      corr_burn,
                 "corr_consumed_vs_error":  corr_consumed,
+                "corr_active_pct_vs_error": corr_active_vs_error,
                 "calibration_ratio":       calibration_ratio,
                 "bias_pct":                bias_pct,
                 "implied_correction_kcal": implied_correction,
