@@ -74,6 +74,43 @@ def build():
     corr_burn     = round(float(wk["avg_daily_burned"].corr(wk["daily_error_kcal"])), 2)
     corr_consumed = round(float(wk["avg_daily_consumed"].corr(wk["daily_error_kcal"])), 2)
 
+    # ── Cumulative predicted vs. actual weight change ──────────────────────
+    # Both series start at 0 on the first week's Monday.
+    wk["cum_predicted_lb"] = (wk["tracked_deficit_kcal"].cumsum() / 3500).round(2)
+    wk["cum_actual_lb"]    = (wk["actual_deficit_kcal"].cumsum()  / 3500).round(2)
+
+    # ── Rolling 4-week average daily error ────────────────────────────────
+    wk["rolling_daily_error"] = wk["daily_error_kcal"].rolling(4, min_periods=2).mean().round(0)
+
+    # ── Linear regression: actual_deficit ~ tracked_deficit ───────────────
+    # actual = slope * tracked + intercept
+    import numpy as np
+    x = wk["tracked_deficit_kcal"].values
+    y = wk["actual_deficit_kcal"].values
+    slope_val, intercept_val = np.polyfit(x, y, 1)
+    slope_val, intercept_val = float(slope_val), float(intercept_val)
+    # r² of the fit
+    y_hat  = slope_val * x + intercept_val
+    ss_res = float(np.sum((y - y_hat) ** 2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    r2_val = round(1 - ss_res / ss_tot, 3) if ss_tot else 0.0
+    slope_val     = round(slope_val, 3)
+    intercept_val = round(intercept_val, 0)
+    # trendline endpoints spanning the data range
+    x_min, x_max  = int(x.min()), int(x.max())
+    trend_x = [x_min, x_max]
+    trend_y = [round(slope_val * x_min + intercept_val, 0), round(slope_val * x_max + intercept_val, 0)]
+
+    # ── Calibration factor ────────────────────────────────────────────────
+    # What fraction of your tracked deficit actually shows up on the scale?
+    total_tracked = float(wk["tracked_deficit_kcal"].sum())
+    total_actual  = float(wk["actual_deficit_kcal"].sum())
+    calibration_ratio   = round(total_actual / total_tracked, 3) if total_tracked else None
+    # Implied daily over/under-log as % of tracked
+    bias_pct            = round((1 - calibration_ratio) * 100, 1) if calibration_ratio else None
+    # Suggested correction to logged intake (kcal/day)
+    implied_correction  = int(avg_daily_error)   # same as avg_daily_error, surfaced differently
+
     wk_labels = [d.strftime("%b %d") for d in wk.index]
 
     # ── Overall cumulative totals (for summary cards) ──────────────────────
@@ -114,7 +151,17 @@ def build():
             "daily_error_kcal":     [int(v) for v in wk["daily_error_kcal"]],
             "avg_daily_burned":      [int(v) for v in wk["avg_daily_burned"]],
             "avg_daily_consumed":    [int(v) for v in wk["avg_daily_consumed"]],
+            "cum_predicted_lb":      [float(v) for v in wk["cum_predicted_lb"]],
+            "cum_actual_lb":         [float(v) for v in wk["cum_actual_lb"]],
+            "rolling_daily_error":   [None if (v is None or (isinstance(v, float) and math.isnan(v))) else int(v) for v in wk["rolling_daily_error"]],
             "n_days":               [int(v) for v in wk["n_days"]],
+            "regression": {
+                "slope":       slope_val,
+                "intercept":   int(intercept_val),
+                "r2":          r2_val,
+                "trend_x":     trend_x,
+                "trend_y":     trend_y,
+            },
             "summary": {
                 "avg_daily_error_kcal":    int(avg_daily_error),
                 "median_daily_error_kcal": int(median_daily_error),
@@ -122,6 +169,9 @@ def build():
                 "n_weeks":                 len(wk),
                 "corr_burn_vs_error":      corr_burn,
                 "corr_consumed_vs_error":  corr_consumed,
+                "calibration_ratio":       calibration_ratio,
+                "bias_pct":                bias_pct,
+                "implied_correction_kcal": implied_correction,
             },
         },
         "summary": {

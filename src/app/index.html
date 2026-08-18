@@ -171,6 +171,14 @@
   </div>
 
   <div class="panel">
+    <div class="panel-title">Cumulative Predicted vs. Actual Weight Loss</div>
+    <div class="panel-desc">
+      Running total of predicted weight loss (from logged calories) vs. actual weight lost (from scale). If tracking were perfect the lines would overlap — divergence reveals systematic bias.
+    </div>
+    <div id="chart-cumulative"></div>
+  </div>
+
+  <div class="panel">
     <div class="panel-title">Tracked Deficit vs. Implied Deficit — Week by Week</div>
     <div class="panel-desc">
       Each week: how many pounds would I have lost if my calorie tracking was perfect vs. how many pounds I actually lost (from imputed scale readings).
@@ -186,6 +194,24 @@
     <div id="chart-daily-error"></div>
     <div id="insight" class="insight"></div>
   </div>
+
+  <div class="panel">
+    <div class="panel-title">Rolling 4-Week Daily Error</div>
+    <div class="panel-desc">
+      4-week rolling average of daily error — a flat line = stable systematic bias; an upward/downward trend = calibration is drifting (e.g. metabolic adaptation, seasonal activity change).
+    </div>
+    <div id="chart-rolling-error"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Actual vs. Predicted Deficit — Regression</div>
+    <div class="panel-desc">
+      Each dot is one week. The grey dashed line is "perfect tracking" (slope = 1). The blue line is the actual relationship. A slope &lt; 1 means the more deficit you log, the further reality falls behind.
+    </div>
+    <div id="chart-regression"></div>
+    <div id="regression-insight" class="insight"></div>
+  </div>
+
   <div class="panel">
     <div class="panel-title">What Drives the Error?</div>
     <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;text-align:center">Burn (kcal/day) vs Daily Error</div>
@@ -348,9 +374,46 @@ function renderCalibration(d) {
       <div class="card-value ${lossDelta < 0 ? "positive" : "negative"}">${lossDelta > 0 ? "+" : ""}${lossDelta.toFixed(1)} lb</div>
       <div class="card-sub">actual minus predicted</div>
     </div>
+    <div class="card">
+      <div class="card-label">Calibration Ratio</div>
+      <div class="card-value ${ws.calibration_ratio < 0.85 ? "negative" : "positive"}">${(ws.calibration_ratio * 100).toFixed(1)}%</div>
+      <div class="card-sub">actual / predicted</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Tracking Bias</div>
+      <div class="card-value negative">−${ws.bias_pct}%</div>
+      <div class="card-sub">deficit lost to logging error</div>
+    </div>
   `;
 
   const xAxis = { ...LAYOUT.xaxis, type: "category", tickangle: -40 };
+
+  // Chart 0: Cumulative predicted vs. actual weight loss
+  const cumX = ["Start", ...weeks.labels];
+  const cumPred   = [0, ...weeks.cum_predicted_lb];
+  const cumActual = [0, ...weeks.cum_actual_lb];
+  Plotly.newPlot("chart-cumulative", [
+    {
+      x: cumX, y: cumPred, name: "Predicted (from logged calories)",
+      type: "scatter", mode: "lines",
+      line: { color: "#93c5fd", width: 2.5 },
+      hovertemplate: "%{x}<br>Predicted: %{y:+.2f} lb<extra></extra>",
+    },
+    {
+      x: cumX, y: cumActual, name: "Actual (from scale)",
+      type: "scatter", mode: "lines+markers",
+      line: { color: "#475569", width: 2.5 },
+      marker: { size: 6 },
+      hovertemplate: "%{x}<br>Actual: %{y:+.2f} lb<extra></extra>",
+    },
+  ], {
+    ...LAYOUT,
+    legend: LEG,
+    xaxis: xAxis,
+    yaxis: { ...LAYOUT.yaxis, title: "Cumulative weight change (lb)", zeroline: true, zerolinewidth: 1.5 },
+    shapes: [{ type: "line", x0: cumX[0], x1: cumX[cumX.length-1],
+               y0: 0, y1: 0, line: { color: "#94a3b8", width: 1 } }],
+  }, PLOTLY_CONFIG);
 
   // Chart 1: Tracked deficit vs implied deficit by week (grouped bars, in lbs)
   const toLbs = v => Math.round(v / 3500 * 10) / 10;
@@ -417,6 +480,73 @@ function renderCalibration(d) {
     rather than random week-to-week variation.
     <br><br>To correct going forward: ${fix}.`;
 
+  // Chart: Rolling 4-week daily error
+  Plotly.newPlot("chart-rolling-error", [
+    {
+      x: weeks.labels, y: weeks.daily_error_kcal,
+      name: "Weekly avg daily error", type: "bar",
+      marker: { color: weeks.daily_error_kcal.map(v => v > 0 ? "#e0e7ff" : "#dcfce7") },
+      hovertemplate: "%{x}<br>%{y:+,} kcal/day<extra></extra>",
+    },
+    {
+      x: weeks.labels, y: weeks.rolling_daily_error,
+      name: "4-week rolling avg", type: "scatter", mode: "lines+markers",
+      line: { color: "#6366f1", width: 2.5 },
+      marker: { size: 6 },
+      connectgaps: true,
+      hovertemplate: "%{x}<br>Rolling avg: %{y:+,} kcal/day<extra></extra>",
+    },
+  ], {
+    ...LAYOUT,
+    legend: LEG,
+    xaxis: xAxis,
+    yaxis: { ...LAYOUT.yaxis, title: "kcal/day", zerolinewidth: 1.5 },
+    shapes: [{ type: "line", x0: weeks.labels[0], x1: weeks.labels[weeks.labels.length-1],
+               y0: 0, y1: 0, line: { color: "#94a3b8", width: 1 } }],
+  }, PLOTLY_CONFIG);
+
+  // Chart: Regression actual ~ predicted
+  const reg = weeks.regression;
+  const rToLb = v => Math.round(v / 3500 * 100) / 100;
+  const predLbs   = weeks.tracked_deficit_kcal.map(rToLb);
+  const actLbs    = weeks.actual_deficit_kcal.map(rToLb);
+  const xExtLbs   = [rToLb(reg.trend_x[0]), rToLb(reg.trend_x[1])];
+  const trendLbs  = reg.trend_y.map(rToLb);
+  const perfectLbs = xExtLbs;  // y = x
+  Plotly.newPlot("chart-regression", [
+    {
+      x: predLbs, y: actLbs, text: weeks.labels,
+      mode: "markers", type: "scatter",
+      marker: { color: "#6366f1", size: 9 },
+      name: "Weeks",
+      hovertemplate: "%{text}<br>Predicted: %{x:.2f} lb<br>Actual: %{y:.2f} lb<extra></extra>",
+    },
+    {
+      x: xExtLbs, y: trendLbs, mode: "lines", type: "scatter",
+      name: `Fit (slope=${reg.slope}, R²=${reg.r2})`,
+      line: { color: "#6366f1", width: 2, dash: "solid" },
+      hoverinfo: "skip",
+    },
+    {
+      x: xExtLbs, y: perfectLbs, mode: "lines", type: "scatter",
+      name: "Perfect tracking (slope = 1)",
+      line: { color: "#94a3b8", width: 1.5, dash: "dash" },
+      hoverinfo: "skip",
+    },
+  ], {
+    ...LAYOUT,
+    legend: LEG,
+    xaxis: { ...LAYOUT.xaxis, type: "linear", title: "Predicted loss (lb / week)" },
+    yaxis: { ...LAYOUT.yaxis, title: "Actual loss (lb / week)", zeroline: true, zerolinewidth: 1.5 },
+  }, PLOTLY_CONFIG);
+  document.getElementById("regression-insight").innerHTML =
+    `<strong>Regression:</strong> slope = <strong>${reg.slope}</strong> (R² = ${reg.r2}).
+    For every 1 lb the logs predict you should lose, you actually lose ~<strong>${reg.slope} lb</strong>.
+    ${reg.slope < 0.7 ? "The gap between the fit line and the dashed perfect-tracking line is large — the over-estimation is not random noise, it's a consistent multiplier." :
+      reg.slope < 0.95 ? "Moderate consistent under-delivery relative to what tracking predicts." :
+      "Tracking is close to accurate at a population level."}
+    Intercept = ${reg.intercept > 0 ? "+" : ""}${reg.intercept.toLocaleString()} kcal — this is the baseline error even in a week with zero tracked deficit.`;
+
   // Scatter: error drivers
   function linreg(xs, ys) {
     const n = xs.length, mx = xs.reduce((a,b)=>a+b)/n, my = ys.reduce((a,b)=>a+b)/n;
@@ -477,7 +607,7 @@ function renderCalibration(d) {
   const burnDir  = rBurn  > 0 ? "higher burn → bigger error (Garmin likely over-estimates on active days)" :
                                "higher burn → smaller error (burn estimate looks reasonable)";
   const conDir   = rCon   > 0 ? "higher consumption → bigger error (under-logging on high-intake days)" :
-                               "higher consumption → smaller error (over-logging on high-intake days, or burn under-estimated on low days)";
+                               "higher consumption → smaller error (realistically im not likely to underreport, so a bigger number is likely more honest)";
   document.getElementById("error-drivers-insight").innerHTML =
     `<strong>Error drivers:</strong> Correlation between weekly avg burn and daily error is <strong>${corrDesc(rBurn)}</strong>. 
     Correlation between weekly avg consumption and daily error is <strong>${corrDesc(rCon)}</strong>.
